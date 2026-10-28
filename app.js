@@ -725,7 +725,7 @@ const fmtD = s => s ? C.fmtDate(s, { year: false }) : '';
 
 function vCaixa() {
   const v = cxView(), T = v.totals, s = state.cx;
-  const nav = `<div class="stepnav" style="margin:0 0 14px">
+  const nav = s.tab === 'total' ? `<div class="stepnav" style="margin:0 0 14px"><div class="lbl">Todos os meses</div></div>` : `<div class="stepnav" style="margin:0 0 14px">
       <button aria-label="Mês anterior" data-act="cx-step" data-d="-1">${I.prev}</button>
       <div class="lbl">${C.MONTHS[s.m - 1]} ${s.y}</div>
       <button aria-label="Próximo mês" data-act="cx-step" data-d="1">${I.next}</button></div>`;
@@ -778,23 +778,22 @@ function vCaixa() {
       <button class="btn sm ghost" style="margin-top:8px" data-act="cx-types" data-k="${kind}">⚙ Tipos de ${word} e valores fixos</button>`;
   } else if (s.tab === 'total') {
     const tv = K.totalView(store.players, store.rounds, store.finance, thisY(), thisM());
-    const ini = `${C.MONTHS[+K.FINANCE_START.slice(5) - 1].toLowerCase()}/${K.FINANCE_START.slice(0, 4)}`;
+    const ini = tv.first ? `${C.MONTHS[+tv.first.slice(5) - 1].toLowerCase()}/${tv.first.slice(0, 4)}` : '';
+    const row = (ico, n, val) => `<div class="st-row"><span class="cx-ico ${ico}">${ico === 'in' ? '＋' : '−'}</span><span class="nm">${esc(n)}</span><span class="line"><b>${K.brl(val)}</b></span></div>`;
     body = `<div class="cx-result ${tv.saldo >= 0 ? 'ok' : 'bad'}"><span>Saldo em caixa</span><b>${K.brl(tv.saldo)}</b>
-        <small>desde ${ini} até hoje</small></div>
+        <small>todos os meses, de ${ini} até hoje</small></div>
       <div class="cx-cards" style="margin-top:10px">
-        <div class="cx-card ok"><span>Entradas</span><b>${K.brl(tv.entradas)}</b><small>total</small></div>
-        <div class="cx-card bad"><span>Saídas</span><b>${K.brl(tv.saidas)}</b><small>total</small></div>
+        <div class="cx-card ok"><span>Receitas</span><b>${K.brl(tv.entradas)}</b><small>total</small></div>
+        <div class="cx-card bad"><span>Despesas</span><b>${K.brl(tv.saidas)}</b><small>total</small></div>
         <div class="cx-card"><span>A receber</span><b>${K.brl(tv.aReceber)}</b><small>em aberto</small></div>
       </div>
+      <div class="sec-head" style="margin-top:22px"><h2>Receitas</h2><b class="cx-in">${K.brl(tv.entradas)}</b></div>
+      <div class="sheet-table">${row('in', 'Mensalidades', tv.feePaid)}${row('in', 'Diárias', tv.dayPaid)}${tv.incByCat.map(c => row('in', c.name, c.amount)).join('')}</div>
+      <div class="sec-head" style="margin-top:22px"><h2>Despesas</h2><b class="cx-out">${K.brl(tv.saidas)}</b></div>
+      ${tv.expByCat.length ? `<div class="sheet-table">${tv.expByCat.map(c => row('out', c.name, c.amount)).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma despesa.</p></div>`}
       <div class="sec-head" style="margin-top:22px"><h2>Mês a mês</h2></div>
-      <div class="sheet-table">${tv.months.slice().reverse().map(x => `<button class="st-row cx-row" data-act="cx-goto" data-y="${x.y}" data-m="${x.m}"><span class="nm">${C.MONTHS[x.m - 1]} ${x.y}<small>Entradas ${K.brl(x.entradas)} · Saídas ${K.brl(x.saidas)}</small></span><span class="line"><b class="${x.resultado >= 0 ? 'cx-in' : 'cx-out'}">${x.resultado >= 0 ? '+' : ''}${K.brl(x.resultado)}</b></span></button>`).join('')}</div>
-      <div class="sec-head" style="margin-top:22px"><h2>De onde veio</h2></div>
-      <div class="sheet-table">
-        <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Mensalidades</span><span class="line"><b>${K.brl(tv.feePaid)}</b></span></div>
-        <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Diárias</span><span class="line"><b>${K.brl(tv.dayPaid)}</b></span></div>
-        ${tv.other ? `<div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Outras receitas</span><span class="line"><b>${K.brl(tv.other)}</b></span></div>` : ''}
-      </div>
-      <p class="hint" style="margin-top:10px">O caixa começou a ser controlado em ${ini}. Toque num mês para abrir.</p>`;
+      <div class="sheet-table">${tv.months.slice().reverse().map(x => `<button class="st-row cx-row" data-act="cx-goto" data-y="${x.y}" data-m="${x.m}"><span class="nm">${C.MONTHS[x.m - 1]} ${x.y}<small>Receitas ${K.brl(x.entradas)} · Despesas ${K.brl(x.saidas)}</small></span><span class="line"><b class="${x.resultado >= 0 ? 'cx-in' : 'cx-out'}">${x.resultado >= 0 ? '+' : ''}${K.brl(x.resultado)}</b></span></button>`).join('')}</div>
+      <p class="hint" style="margin-top:10px">Toque num mês para abrir o caixa dele.</p>`;
   } else {
     const acc = K.saldoAcumulado(store.players, store.rounds, store.finance, s.y, s.m);
     const outCats = v.expByCat.filter(c => c.amount), inCats = v.incByCat.filter(c => c.amount);
@@ -1397,7 +1396,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 30.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 31.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================

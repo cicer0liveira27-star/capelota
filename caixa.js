@@ -75,7 +75,8 @@ export function monthView(players, rounds, y, m, doc, cfg) {
   cfg = cfg || DEFAULT_CONFIG;
   const nPel = peladasNoMes(rounds, key);
   d.fixed = { exp: { ...(d.fixed?.exp || {}) }, inc: { ...(d.fixed?.inc || {}) } };
-  const fixedOf = kind => key < FINANCE_START ? [] : (cfg[kind] || []).filter(t => t.freq !== 'avulsa' && +t.amount > 0).map(t => {
+  // fixas valem para todo mês que teve pelada (e de outubro/2026 em diante)
+  const fixedOf = kind => (key < FINANCE_START && !nPel) ? [] : (cfg[kind] || []).filter(t => t.freq !== 'avulsa' && +t.amount > 0).map(t => {
     const o = d.fixed[kind][t.name] || {};
     const base = t.freq === 'mes' ? +t.amount : +t.amount * nPel;
     return { name: t.name, freq: t.freq, unit: +t.amount, n: nPel, amount: o.amount ?? base, custom: o.amount != null, off: !!o.off };
@@ -122,9 +123,10 @@ export function overdue(players, rounds, finance, today) {
 }
 
 // Meses com caixa: de outubro/2026 até o mês pedido (e qualquer mês que tenha lançamento salvo)
-function caixaMonths(finance, y, m) {
+function caixaMonths(finance, rounds, y, m) {
   const until = monthKey(y, m), set = new Set(Object.keys(finance || {}).filter(k => isMonthKey(k) && k <= until));
-  let yy = +FINANCE_START.slice(0, 4), mm = +FINANCE_START.slice(5, 7);
+  const first = [FINANCE_START, ...(rounds || []).map(r => r.date.slice(0, 7))].sort()[0];
+  let yy = +first.slice(0, 4), mm = +first.slice(5, 7);
   while (monthKey(yy, mm) <= until) { set.add(monthKey(yy, mm)); mm++; if (mm > 12) { mm = 1; yy++; } }
   return [...set].sort();
 }
@@ -132,13 +134,17 @@ function caixaMonths(finance, y, m) {
 // Caixa total: soma mês a mês até o mês pedido
 export function totalView(players, rounds, finance, y, m) {
   const cfg = getConfig(finance);
-  const months = caixaMonths(finance, y, m).map(k => {
+  const exp = {}, inc = {};
+  const months = caixaMonths(finance, rounds, y, m).map(k => {
     const [yy, mm] = k.split('-').map(Number);
     const v = monthView(players, rounds, yy, mm, finance?.[k], cfg);
-    return { key: k, y: yy, m: mm, ...v.totals };
+    v.expByCat.forEach(c => { if (c.amount) exp[c.name] = (exp[c.name] || 0) + c.amount; });
+    v.incByCat.forEach(c => { if (c.amount) inc[c.name] = (inc[c.name] || 0) + c.amount; });
+    return { key: k, y: yy, m: mm, nPel: v.nPel, ...v.totals };
   });
   const sum = f => months.reduce((a, x) => a + x[f], 0);
-  return { months, entradas: sum('entradas'), saidas: sum('saidas'), saldo: sum('resultado'), aReceber: sum('aReceber'), feePaid: sum('feePaid'), dayPaid: sum('dayPaid'), other: sum('other') };
+  const list = o => Object.entries(o).map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount);
+  return { months, first: months[0]?.key, expByCat: list(exp), incByCat: list(inc), entradas: sum('entradas'), saidas: sum('saidas'), saldo: sum('resultado'), aReceber: sum('aReceber'), feePaid: sum('feePaid'), dayPaid: sum('dayPaid'), other: sum('other') };
 }
 
 export function saldoAcumulado(players, rounds, finance, y, m) {
