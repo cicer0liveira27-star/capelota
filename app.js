@@ -1,4 +1,4 @@
-import { store, onlyDigits } from './store.js';
+import { store, onlyDigits, validCpf, maskCpfEnd } from './store.js';
 import * as C from './calc.js';
 
 // ================= utilidades =================
@@ -564,6 +564,7 @@ function vAtleta(id) {
         <div class="facts">
           <span class="pill ${isG ? '' : 'red'}">${isG ? 'Goleiro' : 'Linha'}</span>
           ${p.num ? `<span class="pill">Camisa ${esc(p.num)}</span>` : ''}
+          ${store.isPlayerMaster(p.id) ? `<span class="pill red">Comissão</span>` : ''}
           <span class="pill">${ta.p} ${ta.p === 1 ? 'presença' : 'presenças'}</span>
           ${store.isMaster ? `<span class="pill" title="Nível para o sorteio (só masters veem)"><span class="stars">${'★'.repeat(level)}</span>${'☆'.repeat(5 - level)}</span>` : ''}
           ${p.active === false ? `<span class="pill">Fora do elenco</span>` : ''}
@@ -770,6 +771,9 @@ function vAjustes() {
   return `<div class="page-head"><div><h1>Ajustes</h1></div></div>
     <div class="panel"><h3>Acesso master</h3>
       ${M ? `<p>Você está como master${store.user?.name ? `: <b style="color:var(--texto)">${esc(store.user.name)}</b>` : ''}. Pode cadastrar atletas, lançar, editar e apagar rodadas.</p>
+        <div class="group-title" style="margin-top:4px">Comissão</div>
+        <div class="sheet-table" style="margin-bottom:12px">${store.commission.map(m => { const pl = playerById(m.playerId); return `<a class="st-row" href="${pl ? '#/atleta/' + esc(pl.id) : '#/ajustes'}">${avatar(pl || { id: m.name, name: m.name }, 's')}<span class="nm">${esc(m.name)}<small>${m.founder ? 'Fundador' : m.cpfEnd ? 'CPF ' + maskCpfEnd('000000' + m.cpfEnd) : 'Master'}</small></span><span></span></a>`; }).join('')}</div>
+        <p class="hint" style="margin-bottom:12px">Para dar acesso a mais alguém, abra o perfil do atleta, toque em Editar e ligue "Comissão".</p>
         <button class="btn" data-act="logout">Sair do acesso master</button>`
       : `<p>Todo mundo vê as estatísticas. Só masters (CPF e senha) podem cadastrar, editar e apagar.</p>
         <button class="btn primary" data-act="login">Entrar como master</button>`}
@@ -810,7 +814,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 7.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 8.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -966,6 +970,28 @@ function confirmSheet(title, text, okLabel = 'Confirmar', danger = true) {
   });
 }
 
+// Pede a senha do master logado; roda a ação e mostra o erro ali mesmo se a senha estiver errada
+function passwordSheet(title, action) {
+  return new Promise(res => {
+    openSheet(`<h2>${esc(title)}</h2><p class="muted" style="margin-bottom:14px">Confirme com a sua senha de master.</p>
+      <form id="cpForm"><div class="field"><label for="cpPass">Sua senha</label><input class="input" id="cpPass" type="password" autocomplete="current-password" required autofocus></div>
+      <p class="warn" id="cpErr" hidden></p>
+      <button class="btn primary block" type="submit" id="cpOk">Confirmar e salvar</button>
+      <button class="btn ghost block" type="button" id="cpNo" style="margin-top:8px">Cancelar</button></form>`, s => {
+      $('#cpNo', s).onclick = () => { closeSheet(); res(false); };
+      $('.sheet-bg', sheetRoot).dataset.act = '';
+      $('.sheet-bg', sheetRoot).onclick = () => { closeSheet(); res(false); };
+      $('#cpForm', s).addEventListener('submit', async ev => {
+        ev.preventDefault();
+        const btn = $('#cpOk', s), err = $('#cpErr', s);
+        btn.disabled = true; btn.textContent = 'Conferindo…'; err.hidden = true;
+        try { await action($('#cpPass', s).value); closeSheet(); res(true); }
+        catch (e) { err.textContent = e.message; err.hidden = false; btn.disabled = false; btn.textContent = 'Confirmar e salvar'; }
+      });
+    });
+  });
+}
+
 function loginSheet() {
   openSheet(`<h2>Entrar como master</h2>
     <form id="loginForm" autocomplete="on">
@@ -1012,6 +1038,12 @@ function playerSheet(p) {
   p = p || { name: '', nick: '', pos: 'L', num: '', level: 3, active: true, photo: '' };
   formPhoto = p.photo || '';
   let pos = p.pos || 'L', level = p.level || 3, active = p.active !== false;
+  const wasMaster = !isNew && store.isPlayerMaster(p.id);
+  const founder = !isNew && store.commission.some(m => m.playerId === p.id && m.founder);
+  const mrec = !isNew ? store.commission.find(m => m.playerId === p.id) : null;
+  let masterOn = wasMaster;
+  p.cpf = '';
+  const fmtCpf = v => { const d = onlyDigits(v).slice(0, 11); return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4'); };
   const draw = () => `
     <h2>${isNew ? 'Novo atleta' : 'Editar atleta'}</h2>
     <div class="photo-pick">${formPhoto ? `<span class="av"><img src="${formPhoto}" alt=""></span>` : `<span class="av ${colorClass(p.id || 'x')}">${I.person.replace('<svg', '<svg style="width:46px;fill:rgba(255,255,255,.8)"')}</span>`}
@@ -1027,17 +1059,26 @@ function playerSheet(p) {
       <span class="hint">Só os masters veem. Serve para equilibrar os times.</span></div>
     <div class="toggle-row"><span><b>No elenco</b><br><span class="hint">Desligue para tirar do álbum e do sorteio sem apagar as estatísticas.</span></span>
       <button type="button" class="switch" role="switch" aria-checked="${active}" data-pf="active" aria-label="No elenco"></button></div>
+    <div class="master-box ${masterOn ? 'on' : ''}">
+      <div class="toggle-row" style="padding:0"><span><b>Comissão (acesso master)</b><br><span class="hint">Pode lançar rodadas, sortear, editar atletas e compartilhar.</span></span>
+        <button type="button" class="switch" role="switch" aria-checked="${masterOn}" data-pf="master" aria-label="Acesso master" ${founder ? 'disabled' : ''}></button></div>
+      ${masterOn && !wasMaster ? `<div class="field" style="margin:14px 0 0"><label for="pfCpf">CPF do novo master</label><input class="input" id="pfCpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" value="${esc(p.cpf)}">
+        <span class="hint">Ele entra com esse CPF e a senha geral da comissão. Para salvar, você confirma com a sua senha.</span></div>` : ''}
+      ${wasMaster ? `<p class="hint" style="margin-top:10px">${founder ? 'Master fundador.' : `Faz parte da comissão${mrec?.cpfEnd ? `, CPF ${maskCpfEnd('000000' + mrec.cpfEnd)}` : ''}${mrec?.addedBy ? `, adicionado por ${esc(mrec.addedBy)}` : ''}.`}${!founder && !masterOn ? ' Ao salvar, ele perde o acesso.' : ''}</p>` : ''}
+    </div>
     <button class="btn primary block" data-pf="save">Salvar atleta</button>
     ${isNew ? '' : '<button class="btn danger block" style="margin-top:10px" data-pf="del">Apagar atleta</button>'}`;
-  const keep = s => ({ name: $('#pfName', s)?.value ?? p.name, nick: $('#pfNick', s)?.value ?? p.nick, num: $('#pfNum', s)?.value ?? p.num });
+  const keep = s => ({ name: $('#pfName', s)?.value ?? p.name, nick: $('#pfNick', s)?.value ?? p.nick, num: $('#pfNum', s)?.value ?? p.num, cpf: $('#pfCpf', s)?.value ?? p.cpf });
   openSheet(`<div id="pfBody">${draw()}</div>`, s => {
     const redraw = () => { Object.assign(p, keep(s)); $('#pfBody', s).innerHTML = draw(); };
+    s.addEventListener('input', ev => { if (ev.target.id === 'pfCpf') ev.target.value = fmtCpf(ev.target.value); });
     s.addEventListener('click', async ev => {
       const b = ev.target.closest('[data-pf]'); if (!b) return;
       const a = b.dataset.pf;
       if (a === 'pos') { pos = b.dataset.v; redraw(); }
       if (a === 'level') { level = +b.dataset.v; redraw(); }
       if (a === 'active') { active = !active; b.setAttribute('aria-checked', active); }
+      if (a === 'master' && !founder) { masterOn = !masterOn; redraw(); if (masterOn && !wasMaster) setTimeout(() => $('#pfCpf', s)?.focus(), 50); }
       if (a === 'nophoto') { formPhoto = ''; redraw(); }
       if (a === 'photo') {
         const inp = $('#filePhoto'); inp.value = '';
@@ -1050,9 +1091,26 @@ function playerSheet(p) {
       if (a === 'save') {
         const v = keep(s);
         if (!v.name.trim()) { $('#pfName', s).focus(); toast('Coloque o nome do atleta', true); return; }
+        const promote = masterOn && !wasMaster, demote = !masterOn && wasMaster;
+        if (promote && !validCpf(v.cpf)) { $('#pfCpf', s)?.focus(); toast('CPF inválido. Confira os números.', true); return; }
+        const id = p.id || store.newId();
+        const data = { id, createdAt: p.createdAt || Date.now(), name: v.name.trim(), nick: v.nick.trim(), num: onlyDigits(v.num), pos, level, active, photo: formPhoto };
+        if (promote || demote) {
+          const who = data.nick || data.name;
+          closeSheet();
+          const ok = await passwordSheet(promote ? `Dar acesso master a ${who}` : `Tirar ${who} da comissão`, async pass => {
+            await store.confirmPassword(pass);
+            await store.savePlayer(data);
+            if (promote) await store.addMaster({ cpf: v.cpf, playerId: id, name: who }, pass);
+            else await store.removeMaster(id, pass);
+          });
+          if (ok) toast(promote ? `${who} agora é master` : `${who} saiu da comissão`);
+          else toast('Nada foi salvo');
+          return;
+        }
         b.disabled = true;
         try {
-          await store.savePlayer({ ...(p.id ? { id: p.id, createdAt: p.createdAt } : {}), name: v.name.trim(), nick: v.nick.trim(), num: onlyDigits(v.num), pos, level, active, photo: formPhoto });
+          await store.savePlayer(data);
           closeSheet(); toast(isNew ? 'Atleta cadastrado' : 'Atleta salvo');
         } catch (e) { toast(e.message, true); b.disabled = false; }
       }

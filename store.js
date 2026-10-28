@@ -15,10 +15,20 @@ export const DEFAULT_SETTINGS = {
 };
 
 // Só para o modo local: hash PBKDF2 de "cpf|senha". Os CPFs não ficam escritos no código.
+// Masters fundadores. Os novos masters ficam guardados nos dados (lista "masters").
 const LOCAL_MASTERS = [
-  { h: '767be6c60d4953a4f1e4abdd0d957a8198a47b603a861a31489f48f5d6fa2922', name: 'Cícero' },
-  { h: 'a1d11a1e5d85c2a696dcfd25914000a2f1bcd4b5b5d88ad70219cf9f29800878', name: 'Alyson' }
+  { h: '9919eab5c385c3519d2ab89589228b53289fbfa5b90b84ba22b9a01aae07cfa0', name: 'Cícero', playerId: 'pl-cicero', founder: true },
+  { h: 'd07b0a51fe7deba48f9efbfd964b01f298dd22c612b25c2824974c4263013699', name: 'Alyson', playerId: 'pl-alyson', founder: true }
 ];
+
+// Confere os dígitos verificadores do CPF
+export function validCpf(cpf) {
+  const d = String(cpf || '').replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1+$/.test(d)) return false;
+  const dig = n => { let s = 0; for (let i = 0; i < n; i++) s += +d[i] * (n + 1 - i); return (s * 10) % 11 % 10; };
+  return dig(9) === +d[9] && dig(10) === +d[10];
+}
+export const maskCpfEnd = d => `***.***.${d.slice(6, 9)}-${d.slice(9)}`;
 
 async function pbkdf2(text) {
   const enc = new TextEncoder();
@@ -43,6 +53,7 @@ class Store {
     this.rounds = [];
     this.settings = clone(DEFAULT_SETTINGS);
     this.draw = null; // último sorteio publicado pelos masters
+    this.masters = []; // comissão: [{ id, playerId, name, cpfEnd, h? }] (só masters enxergam)
     this.user = null; // { name, uid? }
     this.mode = 'local';
     this.loaded = { players: false, rounds: false, settings: false };
@@ -82,14 +93,15 @@ class Store {
     this.rounds = data?.rounds || [];
     this.settings = normSettings(data?.settings);
     this.draw = data?.draw || null;
-    try { const m = JSON.parse(localStorage.getItem(LS_MASTER) || 'null'); if (m?.name) this.user = { name: m.name }; } catch (e) {}
+    this.masters = data?.masters || [];
+    try { const m = JSON.parse(localStorage.getItem(LS_MASTER) || 'null'); if (m?.name) this.user = { name: m.name, cpf: m.cpf || '' }; } catch (e) {}
     this.loaded = { players: true, rounds: true, settings: true };
     this._emit();
   }
   _persistLocal() {
     this.usingSeed = false;
     try {
-      localStorage.setItem(LS_DATA, JSON.stringify({ players: this.players, rounds: this.rounds, settings: this.settings, draw: this.draw }));
+      localStorage.setItem(LS_DATA, JSON.stringify({ players: this.players, rounds: this.rounds, settings: this.settings, draw: this.draw, masters: this.masters }));
     } catch (e) {
       throw new Error('Sem espaço no aparelho. Use fotos menores ou ligue o banco na nuvem.');
     }
@@ -113,8 +125,14 @@ class Store {
     this.fb = { app, db, auth, authM, fsM };
     this.mode = 'cloud';
 
+    let unsubMasters = null;
     authM.onAuthStateChanged(auth, u => {
       this.user = u ? { uid: u.uid, name: u.displayName || '', email: u.email } : null;
+      if (unsubMasters) { unsubMasters(); unsubMasters = null; this.masters = []; }
+      // a lista da comissão só pode ser lida por masters
+      if (u) unsubMasters = fsM.onSnapshot(fsM.collection(db, 'masters'), snap => {
+        this.masters = snap.docs.map(d => ({ ...d.data(), id: d.id })); this._emit();
+      }, err => console.error(err));
       this._emit();
     });
     fsM.onSnapshot(fsM.collection(db, 'players'), snap => {
@@ -164,11 +182,73 @@ class Store {
       return;
     }
     const h = await pbkdf2(d + '|' + pass);
-    const m = LOCAL_MASTERS.find(x => x.h === h);
+    const m = [...LOCAL_MASTERS, ...this.masters].find(x => x.h === h);
     if (!m) throw new Error('CPF ou senha incorretos.');
-    this.user = { name: m.name };
-    localStorage.setItem(LS_MASTER, JSON.stringify({ name: m.name }));
+    this.user = { name: m.name, cpf: d };
+    localStorage.setItem(LS_MASTER, JSON.stringify({ name: m.name, cpf: d }));
     this._emit();
+  }
+
+  // Confere a senha de quem está logado antes de mexer na comissão
+  async confirmPassword(pass) {
+    this._requireMaster();
+    if (!pass) throw new Error('Digite sua senha.');
+    if (this.mode === 'cloud') {
+      const { auth, authM } = this.fb;
+      try { await authM.reauthenticateWithCredential(auth.currentUser, authM.EmailAuthProvider.credential(auth.currentUser.email, pass)); }
+      catch (e) { throw new Error(String(e?.code || '').includes('too-many') ? 'Muitas tentativas. Espere alguns minutos.' : 'Senha incorreta.'); }
+      return true;
+    }
+    if (!this.user.cpf) throw new Error('Saia do acesso master e entre de novo para confirmar.');
+    const h = await pbkdf2(this.user.cpf + '|' + pass);
+    if (![...LOCAL_MASTERS, ...this.masters].some(x => x.h === h)) throw new Error('Senha incorreta.');
+    return true;
+  }
+
+  // Lista da comissão (fundadores + adicionados)
+  get commission() {
+    const list = [...LOCAL_MASTERS.map(m => ({ playerId: m.playerId, name: m.name, founder: true })), ...this.masters];
+    const seen = new Set();
+    return list.filter(m => { const k = m.playerId || m.name; if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+  isPlayerMaster(pid) { return this.commission.some(m => m.playerId === pid); }
+
+  // Dá acesso master a um atleta. A senha dele é a senha geral da comissão (a mesma que o master confirmou).
+  async addMaster({ cpf, playerId, name }, pass) {
+    await this.confirmPassword(pass);
+    const d = onlyDigits(cpf);
+    if (!validCpf(d)) throw new Error('CPF inválido. Confira os números.');
+    const rec = { playerId, name, cpfEnd: d.slice(6), addedBy: this.user?.name || '', at: Date.now() };
+    if (this.mode === 'cloud') {
+      const { fsM, db, authM } = this.fb;
+      const appM = await import(FB + 'firebase-app.js');
+      // app secundário: cria o login do novo master sem derrubar a sessão de quem está cadastrando
+      const sec = appM.initializeApp(FIREBASE_CONFIG, 'cadastro-' + Date.now());
+      try {
+        const sa = authM.getAuth(sec);
+        try { await authM.createUserWithEmailAndPassword(sa, d + EMAIL_DOMAIN, pass); }
+        catch (e) { if (!String(e?.code || '').includes('email-already-in-use')) throw this._fbError(e); }
+        await authM.signOut(sa).catch(() => {});
+      } finally { appM.deleteApp(sec).catch(() => {}); }
+      await this._cloudWrite(fsM.setDoc(fsM.doc(db, 'masters', d + EMAIL_DOMAIN), rec));
+      return 'ok';
+    }
+    if ([...LOCAL_MASTERS, ...this.masters].some(m => m.cpfEnd === rec.cpfEnd && m.playerId === playerId)) return 'ok';
+    rec.h = await pbkdf2(d + '|' + pass);
+    rec.id = 'm-' + Date.now().toString(36);
+    this.masters = this.masters.filter(m => m.playerId !== playerId);
+    this.masters.push(rec);
+    this._persistLocal(); this._emit(); return 'ok';
+  }
+
+  async removeMaster(playerId, pass) {
+    await this.confirmPassword(pass);
+    if (LOCAL_MASTERS.some(m => m.playerId === playerId)) throw new Error('Os masters fundadores não podem ser removidos pelo app.');
+    const m = this.masters.find(x => x.playerId === playerId);
+    if (!m) return 'ok';
+    if (this.mode === 'cloud') { const { fsM, db } = this.fb; return this._cloudWrite(fsM.deleteDoc(fsM.doc(db, 'masters', m.id))); }
+    this.masters = this.masters.filter(x => x.playerId !== playerId);
+    this._persistLocal(); this._emit(); return 'ok';
   }
   async logout() {
     if (this.mode === 'cloud') { await this.fb.authM.signOut(this.fb.auth); return; }
