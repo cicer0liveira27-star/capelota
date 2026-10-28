@@ -718,7 +718,9 @@ function vCaixa() {
       ${list.length ? `<div class="sheet-table">${list.map(f => `<button class="st-row cx-row" data-act="cx-fee" data-id="${esc(f.id)}">${avatar(f.p, 's')}
         <span class="nm">${esc(dn(f.p))}<small>${f.paid ? `Pago${f.paidAt ? ' em ' + fmtD(f.paidAt) : ''}${f.method ? ' · ' + f.method : ''}${f.receiptId ? ' · 📎 comprovante' : ''}` : 'Mensalidade em aberto'}</small></span>
         <span class="line"><b>${K.brl(f.amount)}</b>${pill(f.paid, 'Regular', 'Inadimplente')}</span></button>`).join('')}</div>` : `<div class="empty"><p>Ninguém nesta lista.</p></div>`}
-      <p class="hint" style="margin-top:10px">Mensalistas são os atletas marcados como Mensalista e no elenco. Toque em um para registrar o pagamento ou anexar o comprovante.</p>`;
+      <button class="btn sm" style="margin-top:10px" data-act="cx-addfee">＋ Adicionar mensalista neste mês</button>
+      ${v.doc.pix ? `<p class="hint" style="margin-top:10px">PIX para pagamento: <b>${esc(v.doc.pix)}</b></p>` : ''}
+      <p class="hint" style="margin-top:10px">A lista do mês começa com os atletas marcados como Mensalista e no elenco. Toque em um para registrar o pagamento, anexar o comprovante ou tirar da lista deste mês.</p>`;
   } else if (s.tab === 'dia') {
     body = `<div class="cx-cards">
         <div class="cx-card ok"><span>Recebido</span><b>${K.brl(T.dayPaid)}</b><small>${v.daily.filter(d => d.paid).reduce((x, d) => x + d.count, 0)} diárias</small></div>
@@ -796,7 +798,8 @@ function feeSheet(id) {
     <div class="field"><span class="lab">Forma</span><div class="seg" id="cxMet">${K.METHODS.map(mt => `<button type="button" class="${(f.method || 'PIX') === mt ? 'on' : ''}" data-x="met" data-v="${mt}">${mt}</button>`).join('')}</div></div>
     <div class="field"><span class="lab">Comprovante</span><div id="cxRec"></div></div>
     <button class="btn primary block" data-x="pay">${f.paid ? 'Salvar pagamento' : 'Registrar pagamento (Regular)'}</button>
-    ${f.paid ? '<button class="btn danger block" style="margin-top:8px" data-x="unpay">Marcar como inadimplente</button>' : ''}`, s => {
+    ${f.paid ? '<button class="btn danger block" style="margin-top:8px" data-x="unpay">Marcar como inadimplente</button>' : ''}
+    <button class="btn ghost block" style="margin-top:8px" data-x="out">Não é mensalista neste mês</button>`, s => {
     let method = f.method || 'PIX';
     draw(s);
     s.addEventListener('click', async ev => {
@@ -805,6 +808,10 @@ function feeSheet(id) {
       if (x === 'met') { method = b.dataset.v; s.querySelectorAll('#cxMet button').forEach(e => e.classList.toggle('on', e === b)); }
       if (x === 'view') openReceipt(rec.receiptId);
       if (x === 'att') { try { const r = await attachReceipt(); if (r) { rec = r; draw(s); toast('Comprovante anexado'); } } catch (e) { toast(e.message, true); } }
+      if (x === 'out') {
+        const v2 = cxView(); v2.doc.fees = { ...(v2.doc.fees || {}), [id]: { excluded: true } };
+        closeSheet(); await cxSave(v2, `${dn(f.p)} saiu da lista de ${C.MONTHS[state.cx.m - 1].toLowerCase()}`); return;
+      }
       if (x === 'pay' || x === 'unpay') {
         const v2 = cxView(); v2.doc.fees = { ...(v2.doc.fees || {}) };
         const amount = parseFloat(String(s.querySelector('#cxVal').value).replace(/\./g, '').replace(',', '.')) || v2.doc.prices.mensal;
@@ -1242,7 +1249,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 24.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 25.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2074,6 +2081,14 @@ const actions = {
   'cx-exp': el => entrySheet('exp', el.dataset.id, el.dataset.cat),
   'cx-inc': el => entrySheet('inc', el.dataset.id),
   'cx-prices': () => pricesSheet(),
+  'cx-addfee': async () => {
+    const v = cxView(); const inList = new Set(v.fees.map(f => f.id));
+    const cands = store.players.filter(p => !inList.has(p.id)).sort((x, y) => dn(x).localeCompare(dn(y)));
+    const pid = await pickPlayerSheet('Adicionar mensalista neste mês', cands.map(p => p.id));
+    if (!pid) return;
+    const v2 = cxView(); v2.doc.fees = { ...(v2.doc.fees || {}), [pid]: { paid: false, amount: v2.doc.prices.mensal } };
+    await cxSave(v2, `${dn(playerById(pid))} entrou na lista do mês`);
+  },
   'live-start': async () => {
     const teams = state.draw.result.map((ids, i) => ({ name: TEAM_NAMES[i], ids }));
     if (teams.length < 2) { toast('Sorteie pelo menos 2 times', true); return; }

@@ -19,7 +19,7 @@ export function monthView(players, rounds, y, m, doc) {
   const tipo = p => p.tipo || 'M';
   // mensalistas: quem é Mensalista e está no elenco, mais quem já tem lançamento no mês
   const feeIds = new Set(players.filter(p => tipo(p) === 'M' && p.active !== false).map(p => p.id));
-  Object.keys(d.fees || {}).forEach(id => feeIds.add(id));
+  Object.entries(d.fees || {}).forEach(([id, f]) => { if (f?.excluded) feeIds.delete(id); else feeIds.add(id); });
   const fees = [...feeIds].map(id => {
     const p = players.find(x => x.id === id);
     const f = d.fees?.[id] || {};
@@ -28,7 +28,8 @@ export function monthView(players, rounds, y, m, doc) {
   // diárias: presenças de quem não é mensalista nas rodadas do mês
   const pres = {};
   rounds.filter(r => r.date.slice(0, 7) === key).forEach(r => Object.entries(r.entries || {}).forEach(([pid, e]) => { if (e?.p) pres[pid] = (pres[pid] || 0) + (+e.p || 0); }));
-  const dayIds = new Set(Object.keys(pres).filter(id => { const p = players.find(x => x.id === id); return p && tipo(p) !== 'M'; }));
+  // quem paga mensalidade no mês não paga diária; quem é Mensalista mas ficou fora da lista do mês paga diária
+  const dayIds = new Set(Object.keys(pres).filter(id => { const p = players.find(x => x.id === id); return p && !feeIds.has(id); }));
   Object.keys(d.daily || {}).forEach(id => dayIds.add(id));
   const daily = [...dayIds].map(id => {
     const p = players.find(x => x.id === id);
@@ -61,7 +62,7 @@ export function saldoAcumulado(players, rounds, finance, y, m) {
 // Guarda no doc só o necessário
 export function toDoc(view) {
   const d = view.doc;
-  return { prices: d.prices, fees: d.fees || {}, daily: d.daily || {}, expenses: d.expenses || [], income: d.income || [] };
+  return { prices: d.prices, pix: d.pix || '', fees: d.fees || {}, daily: d.daily || {}, expenses: d.expenses || [], income: d.income || [] };
 }
 
 // Lê arquivo (foto ou PDF) e devolve dataURL leve para guardar
