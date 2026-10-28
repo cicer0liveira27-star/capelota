@@ -77,19 +77,23 @@ export function roundCount(rounds) { return rounds.reduce((s, r) => s + (r.summa
 // + títulos x 250 + presenças x 100. Os "maiores" são do próprio período.
 // O melhor aproveitamento considera só quem foi a pelo menos metade das rodadas (como na planilha).
 // Goleiro: soma também jogos sem sofrer gol x 1100 / maior nº de jogos sem sofrer gol.
-function capelotaScores(totals, posOf) {
+// scale: divisores usados na planilha da Capelota para o período ({ g, a, ap }).
+// Sem scale, usa o maior número de gols, de assistências e o melhor aproveitamento
+// (arredondado em %, como na planilha) entre quem foi a pelo menos metade das rodadas.
+function capelotaScores(totals, posOf, scale) {
   const L = Object.entries(totals);
   if (!L.length) return;
   const ap = t => games(t) ? (t.w * 3 + t.d) / (games(t) * 3) : 0;
-  const maxG = Math.max(1, ...L.map(([, t]) => t.g));
-  const maxA = Math.max(1, ...L.map(([, t]) => t.a));
+  const maxG = scale?.g || Math.max(1, ...L.map(([, t]) => t.g));
+  const maxA = scale?.a || Math.max(1, ...L.map(([, t]) => t.a));
   const maxCs = Math.max(1, ...L.map(([, t]) => t.cs));
   const maxP = Math.max(1, ...L.map(([, t]) => t.p));
   const thr = Math.ceil(maxP / 2);
   const regs = L.filter(([, t]) => t.p >= thr && games(t) > 0).map(([, t]) => ap(t));
-  const maxAp = Math.max(0.01, ...(regs.length ? regs : L.map(([, t]) => ap(t))));
+  const maxAp = scale?.ap || Math.max(0.01, Math.round(Math.max(0, ...(regs.length ? regs : L.map(([, t]) => ap(t)))) * 100) / 100);
+  const apOf = t => scale?.apRound ? Math.round(ap(t) * 100) / 100 : ap(t);
   for (const [pid, t] of L) {
-    let v = t.g * 1100 / maxG + t.a * 850 / maxA + ap(t) * 1250 / maxAp + t.t * 250 + t.p * 100;
+    let v = t.g * 1100 / maxG + t.a * 850 / maxA + apOf(t) * 1250 / maxAp + t.t * 250 + t.p * 100;
     if (posOf[pid] === 'G') v += t.cs * 1100 / maxCs;
     t.pts = Math.round(v);
   }
@@ -113,7 +117,11 @@ export function aggregate(rounds, players, per, settings) {
       if (aw.gar.includes(pid)) t.gar++;
     }
   }
-  if (scoring === 'capelota') capelotaScores(totals, posOf);
+  let scale = null;
+  if (per && per.type === 'month') scale = list.find(r => r.summary && r.scale)?.scale || null;
+  else if (per && per.type === 'year') scale = settings.scales?.[per.y] || null;
+  else if (per && per.type === 'all') { const ys = [...new Set(list.map(r => r.date.slice(0, 4)))]; if (ys.length === 1) scale = settings.scales?.[ys[0]] || null; }
+  if (scoring === 'capelota') capelotaScores(totals, posOf, scale);
   else for (const [pid, t] of Object.entries(totals)) t.pts = points(t, posOf[pid] || 'L', w);
   return { totals, rounds: list, nRounds: roundCount(list) };
 }
