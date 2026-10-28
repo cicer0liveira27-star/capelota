@@ -556,3 +556,13 @@ textarea.input { min-height: 80px; resize: vertical; }
 .team li.hit { background: color-mix(in srgb, var(--sombrero) 22%, transparent); }
 .team.dim { opacity: .4; }
 details.panel summary::-webkit-details-marker { color: var(--texto-3); }
+
+/* escolha feed ou story */
+.fmt-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fmt { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 10px 14px; border-radius: 16px; border: 1.5px solid var(--risca); background: var(--noite); }
+.fmt:active { border-color: var(--sombrero); }
+.fmt b { font-family: var(--fd); font-size: 24px; font-weight: 800; }
+.fmt span:last-child { font-size: 13px; color: var(--texto-2); }
+.fmt .shape { display: block; width: 64px; border-radius: 8px; border: 3px solid var(--couro); background: linear-gradient(160deg, var(--sombrero), var(--braco)); margin-bottom: 6px; }
+.fmt .shape.feed { height: 80px; }
+.fmt .shape.story { width: 54px; height: 96px; }

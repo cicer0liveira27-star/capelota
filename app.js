@@ -732,8 +732,8 @@ function vPremios() {
   return head + nav + craque + hls + `
     <section class="sec"><div class="sec-head"><h2>Time ideal</h2><span class="muted small">Os ${line.length} de linha${A.time.gk ? ' e o goleiro' : ''} com mais pontos</span></div>${pitch}
       <p class="legend-awards"><span>${AWARD_SVG.crown}Craque</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span></p></section>
-    <div class="btn-row sec"><button class="btn primary" data-act="share-month">${I.share}Compartilhar no story</button></div>
-    <p class="hint" style="margin-top:8px">Gera duas imagens no tamanho do story: o time ideal e os destaques do mês.</p>
+    <div class="btn-row sec"><button class="btn primary" data-act="share-month">${I.share}Compartilhar no Instagram</button></div>
+    <p class="hint" style="margin-top:8px">Gera duas imagens, no tamanho do feed ou do story: o time ideal e os destaques do mês.</p>
     ${yearList(y)}`;
 }
 
@@ -810,7 +810,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 6.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 7.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1080,7 +1080,10 @@ async function resizePhoto(file, size = 360) {
 }
 
 // ================= CARDS PARA COMPARTILHAR (tamanho story: 1080 x 1920) =================
-const W = 1080, H = 1920;
+// Formatos do Instagram: story 1080x1920 (9:16) e feed 1080x1350 (4:5)
+const W = 1080;
+let H = 1920, FEED = false;
+function setFormat(f) { FEED = f === 'feed'; H = FEED ? 1350 : 1920; }
 // Ícones dos prêmios: coroa (craque), chuteira (artilheiro), cartola (garçom)
 const AWARD_SVG = {
   crown: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M10 47 6 20l14 11 12-20 12 20 14-11-4 27z" fill="#f2c230" stroke="#0a0f1e" stroke-width="3.5" stroke-linejoin="round"/><rect x="9" y="46" width="46" height="9" rx="2.5" fill="#e0a12a" stroke="#0a0f1e" stroke-width="3.5"/><circle cx="32" cy="11" r="4.5" fill="#d63050" stroke="#0a0f1e" stroke-width="3"/><circle cx="6" cy="20" r="4" fill="#d63050" stroke="#0a0f1e" stroke-width="3"/><circle cx="58" cy="20" r="4" fill="#d63050" stroke="#0a0f1e" stroke-width="3"/><circle cx="32" cy="38" r="3.5" fill="#3c8ea6"/></svg>`,
@@ -1111,11 +1114,13 @@ async function cardBase(title, subtitle) {
   const pat = ['#d63050', '#3c8ea6', '#f2ece0', '#3c8ea6'], wd = [36, 16, 8, 16];
   for (let px = 0, i = 0; px < W; px += wd[i % 4], i++) { x.fillStyle = pat[i % 4]; x.fillRect(px, H - 28, wd[i % 4], 28); }
   const logo = await loadImg('icons/logo-512.png');
-  if (logo) x.drawImage(logo, 60, 90, 160, 160 * logo.height / logo.width);
+  const oy = FEED ? -40 : 0, ls = FEED ? 130 : 160;
+  if (logo) x.drawImage(logo, 60, 90 + oy, ls, ls * logo.height / logo.width);
   x.textBaseline = 'alphabetic'; x.textAlign = 'left';
-  x.fillStyle = '#f2ece0'; x.font = `900 92px ${FD}`; x.fillText('Capelota', 240, 175);
-  x.fillStyle = '#a7b0c5'; x.font = `600 34px ${FB}`; x.fillText(subtitle, 243, 225);
-  x.fillStyle = '#ff7088'; x.font = `600 36px ${FB}`; x.textAlign = 'right'; x.fillText(title, 1020, 175); x.textAlign = 'left';
+  const tx = 60 + ls + 20;
+  x.fillStyle = '#f2ece0'; x.font = `900 ${FEED ? 80 : 92}px ${FD}`; x.fillText('Capelota', tx, 175 + oy - (FEED ? 8 : 0));
+  x.fillStyle = '#a7b0c5'; x.font = `600 ${FEED ? 30 : 34}px ${FB}`; x.fillText(subtitle, tx + 3, 225 + oy - (FEED ? 12 : 0));
+  x.fillStyle = '#ff7088'; x.font = `600 ${FEED ? 32 : 36}px ${FB}`; x.textAlign = 'right'; x.fillText(title, 1020, 175 + oy - (FEED ? 8 : 0)); x.textAlign = 'left';
   return { c, x };
 }
 
@@ -1169,14 +1174,14 @@ async function drawAvatar(x, p, cx, cy, r, ring) {
   x.restore();
 }
 
-function statTiles(x, items, y) {
-  const n = items.length, gap = 18, w = (960 - gap * (n - 1)) / n;
+function statTiles(x, items, y, th = 190) {
+  const n = items.length, gap = 18, w = (960 - gap * (n - 1)) / n, k = th / 190;
   items.forEach(([v, l], i) => {
     const px = 60 + i * (w + gap);
-    x.fillStyle = 'rgba(24,35,60,.92)'; rr(x, px, y, w, 190, 24); x.fill();
+    x.fillStyle = 'rgba(24,35,60,.92)'; rr(x, px, y, w, th, 24); x.fill();
     x.strokeStyle = '#27365a'; x.lineWidth = 2; x.stroke();
-    x.fillStyle = '#f2ece0'; x.font = `900 ${String(v).length > 3 ? 72 : 92}px ${FD}`; x.textAlign = 'center'; x.fillText(String(v), px + w / 2, y + 112);
-    x.fillStyle = '#a7b0c5'; x.font = `600 30px ${FB}`; x.fillText(l, px + w / 2, y + 160); x.textAlign = 'left';
+    x.fillStyle = '#f2ece0'; x.font = `900 ${Math.round((String(v).length > 3 ? 72 : 92) * k)}px ${FD}`; x.textAlign = 'center'; x.fillText(String(v), px + w / 2, y + 112 * k);
+    x.fillStyle = '#a7b0c5'; x.font = `600 ${Math.round(30 * k)}px ${FB}`; x.fillText(l, px + w / 2, y + 160 * k); x.textAlign = 'left';
   });
 }
 
@@ -1196,17 +1201,24 @@ async function shareFiles(files) {
   toast(files.length > 1 ? 'Imagens baixadas' : 'Imagem baixada');
 }
 
-async function sharePlayer(id) {
+async function sharePlayer(id, fmt) {
   const p = playerById(id); if (!p) return;
+  setFormat(fmt);
   const per = state.pers.prof;
   const { totals: T } = C.aggregate(store.rounds, store.players, per, store.settings);
   const t = T[p.id] || C.zero();
   const { c, x } = await cardBase(C.periodLabel(per), 'Terças, 19h');
-  await drawSticker(x, p, 540, 860, 720, 920, -0.04);
   const items = p.pos === 'G' ? [[t.p, 'Presenças'], [t.cs, 'Sem sofrer'], [t.g, 'Gols'], [t.pts, 'Pontos']] : [[t.p, 'Presenças'], [t.g, 'Gols'], [t.a, 'Assist.'], [t.pts, 'Pontos']];
-  statTiles(x, items, 1450);
-  if (p.pos !== 'G') statTiles(x, [[t.w, 'Vitórias'], [t.d, 'Empates'], [t.l, 'Derrotas'], [t.t, 'Títulos']], 1662);
-  await shareFiles([await canvasFile(c, `capelota-${dn(p).toLowerCase().replace(/\W+/g, '-')}.png`)]);
+  if (FEED) {
+    await drawSticker(x, p, 540, 605, 540, 690, -0.04);
+    statTiles(x, items, 1010, 180);
+    if (p.pos !== 'G') { x.fillStyle = '#a7b0c5'; x.font = `600 30px ${FB}`; x.textAlign = 'center'; x.fillText(`${t.w} vitórias, ${t.d} empates, ${t.l} derrotas, ${t.t} títulos`, 540, 1255); x.textAlign = 'left'; }
+  } else {
+    await drawSticker(x, p, 540, 860, 720, 920, -0.04);
+    statTiles(x, items, 1450);
+    if (p.pos !== 'G') statTiles(x, [[t.w, 'Vitórias'], [t.d, 'Empates'], [t.l, 'Derrotas'], [t.t, 'Títulos']], 1662);
+  }
+  await shareFiles([await canvasFile(c, `capelota-${dn(p).toLowerCase().replace(/\W+/g, '-')}-${FEED ? 'feed' : 'story'}.png`)]);
 }
 
 // Quem leva cada ícone no mês
@@ -1219,23 +1231,25 @@ function monthBadges(A) {
   return b;
 }
 
-async function storyTimeIdeal(A) {
+async function cardTimeIdeal(A) {
   const T = A.totals, { y, m } = A, badges = monthBadges(A);
   const { c, x } = await cardBase(`${C.MONTHS[m - 1]} ${y}`, 'Time ideal do mês');
   // campo
-  const fx = 50, fy = 300, fw = 980, fh = 1290;
+  const fx = 50, fy = FEED ? 220 : 300, fw = 980, fh = FEED ? 900 : 1290;
   x.save(); rr(x, fx, fy, fw, fh, 36); x.clip();
   for (let i = 0; i < 12; i++) { x.fillStyle = i % 2 ? '#12303a' : '#0f2a33'; x.fillRect(fx, fy + i * fh / 12, fw, fh / 12 + 1); }
   x.strokeStyle = 'rgba(242,236,224,.2)'; x.lineWidth = 4;
   rr(x, fx + 24, fy + 24, fw - 48, fh - 48, 10); x.stroke();
-  x.beginPath(); x.arc(fx + fw / 2, fy + 24, 120, 0, Math.PI); x.stroke();
-  x.strokeRect(fx + fw / 2 - 210, fy + fh - 24 - 170, 420, 170);
-  x.strokeRect(fx + fw / 2 - 100, fy + fh - 24 - 70, 200, 70);
+  x.beginPath(); x.arc(fx + fw / 2, fy + 24, FEED ? 95 : 120, 0, Math.PI); x.stroke();
+  const ah = FEED ? 120 : 170, gh = FEED ? 50 : 70;
+  x.strokeRect(fx + fw / 2 - 210, fy + fh - 24 - ah, 420, ah);
+  x.strokeRect(fx + fw / 2 - 100, fy + fh - 24 - gh, 200, gh);
   x.restore();
   const line = A.time.line, rows = FORMATION[line.length] || [line.length];
   const nRows = rows.length + (A.time.gk ? 1 : 0);
-  const top = fy + 150, bottom = fy + fh - 170, step = nRows > 1 ? (bottom - top) / (nRows - 1) : 0;
-  const R = line.length > 6 ? 78 : 92;
+  const top = fy + (FEED ? 105 : 150), bottom = fy + fh - (FEED ? 140 : 170), step = nRows > 1 ? (bottom - top) / (nRows - 1) : 0;
+  const R = FEED ? (nRows > 3 ? 56 : 66) : (line.length > 6 ? 78 : 92);
+  const k0 = FEED ? 0.8 : 1;
   const spots = []; let k = 0;
   rows.forEach((n, ri) => { const ps = line.slice(k, k += n); ps.forEach((p, i) => spots.push({ p, cx: fx + fw * (i + 1) / (n + 1), cy: top + ri * step })); });
   if (A.time.gk) spots.push({ p: A.time.gk, cx: fx + fw / 2, cy: top + rows.length * step, gk: true });
@@ -1244,67 +1258,102 @@ async function storyTimeIdeal(A) {
     const bs = badges[s.p.id] || [];
     for (let i = 0; i < bs.length; i++) {
       const ang = -Math.PI / 4 - i * 0.75;
-      await drawBadge(x, bs[i], s.cx + Math.cos(ang) * (R + 8), s.cy + Math.sin(ang) * (R + 8), 40);
+      await drawBadge(x, bs[i], s.cx + Math.cos(ang) * (R + 8), s.cy + Math.sin(ang) * (R + 8), Math.round(40 * k0));
     }
-    x.font = `800 36px ${FD}`; x.textAlign = 'center';
+    x.font = `800 ${Math.round(36 * k0)}px ${FD}`; x.textAlign = 'center';
     const nm = fit(x, dn(s.p), 230), tw = x.measureText(nm).width;
-    x.fillStyle = 'rgba(10,15,30,.86)'; rr(x, s.cx - tw / 2 - 14, s.cy + R + 16, tw + 28, 50, 12); x.fill();
-    x.fillStyle = '#f2ece0'; x.fillText(nm, s.cx, s.cy + R + 54);
-    x.fillStyle = '#c9cfdc'; x.font = `600 26px ${FB}`; x.fillText(`${T[s.p.id].pts} pts`, s.cx, s.cy + R + 94);
+    const lh = Math.round(50 * k0);
+    x.fillStyle = 'rgba(10,15,30,.86)'; rr(x, s.cx - tw / 2 - 14, s.cy + R + 14, tw + 28, lh, 12); x.fill();
+    x.fillStyle = '#f2ece0'; x.fillText(nm, s.cx, s.cy + R + 14 + lh * 0.76);
+    x.fillStyle = '#c9cfdc'; x.font = `600 ${Math.round(26 * k0)}px ${FB}`; x.fillText(`${T[s.p.id].pts} pts`, s.cx, s.cy + R + 14 + lh + 30 * k0);
     x.textAlign = 'left';
   }
   // legenda
   const leg = [['crown', A.mvp ? `${dn(A.mvp)}` : '–', 'Craque'], ['boot', A.artilheiro.length ? `${A.artilheiro.map(dn).join(', ')} (${T[A.artilheiro[0].id].g})` : '–', 'Artilheiro'], ['hat', A.garcom.length ? `${A.garcom.map(dn).join(', ')} (${T[A.garcom[0].id].a})` : '–', 'Garçom']];
-  let ly = 1640;
-  for (const [kind, who, lab] of leg) {
-    await drawBadge(x, kind, 98, ly + 30, 34);
-    x.fillStyle = '#a7b0c5'; x.font = `600 28px ${FB}`; x.fillText(lab, 150, ly + 18);
-    x.fillStyle = '#f2ece0'; x.font = `700 34px ${FB}`; x.fillText(fit(x, who, 860), 150, ly + 56);
-    ly += 82;
+  if (FEED) {
+    for (let i = 0; i < leg.length; i++) {
+      const [kind, who, lab] = leg[i], lx = 60 + i * 330;
+      await drawBadge(x, kind, lx + 30, 1215, 30);
+      x.fillStyle = '#a7b0c5'; x.font = `600 24px ${FB}`; x.fillText(lab, lx + 72, 1203);
+      x.fillStyle = '#f2ece0'; x.font = `700 28px ${FB}`; x.fillText(fit(x, who, 245), lx + 72, 1239);
+    }
+  } else {
+    let ly = 1640;
+    for (const [kind, who, lab] of leg) {
+      await drawBadge(x, kind, 98, ly + 30, 34);
+      x.fillStyle = '#a7b0c5'; x.font = `600 28px ${FB}`; x.fillText(lab, 150, ly + 18);
+      x.fillStyle = '#f2ece0'; x.font = `700 34px ${FB}`; x.fillText(fit(x, who, 860), 150, ly + 56);
+      ly += 82;
+    }
   }
-  return canvasFile(c, `capelota-time-ideal-${y}-${String(m).padStart(2, '0')}.png`);
+  return canvasFile(c, `capelota-time-ideal-${y}-${String(m).padStart(2, '0')}-${FEED ? 'feed' : 'story'}.png`);
 }
 
-async function storyDestaques(A) {
+async function cardDestaques(A) {
   const T = A.totals, { y, m } = A;
   const { c, x } = await cardBase(`${C.MONTHS[m - 1]} ${y}`, 'Destaques do mês');
-  // craque
   const mvp = A.mvp;
-  await drawSticker(x, mvp, 330, 690, 440, 560, -0.05);
-  await drawBadge(x, 'crown', 515, 430, 62);
-  x.fillStyle = '#ff7088'; x.font = `600 36px ${FB}`; x.fillText('Craque do mês', 600, 520);
-  x.fillStyle = '#f2ece0'; x.font = `900 96px ${FD}`; x.fillText(fit(x, dn(mvp), 440), 596, 615);
-  x.font = `900 150px ${FD}`; x.fillText(String(T[mvp.id].pts), 596, 775);
-  x.fillStyle = '#a7b0c5'; x.font = `800 44px ${FD}`; x.fillText('pontos', 600, 830);
-  x.fillStyle = '#c9cfdc'; x.font = `600 32px ${FB}`;
-  x.fillText(mvp.pos === 'G' ? `${T[mvp.id].cs} sem sofrer gol` : `${T[mvp.id].g} gols, ${T[mvp.id].a} assist.`, 600, 890);
-  x.fillText(`${T[mvp.id].p} presenças`, 600, 936);
+  // craque
+  const L = FEED
+    ? { sx: 250, sy: 480, sw: 330, sh: 420, bx: 395, by: 285, br: 50, tx: 470, k: 0.85, t0: 380 }
+    : { sx: 330, sy: 690, sw: 440, sh: 560, bx: 515, by: 430, br: 62, tx: 600, k: 1, t0: 520 };
+  await drawSticker(x, mvp, L.sx, L.sy, L.sw, L.sh, -0.05);
+  await drawBadge(x, 'crown', L.bx, L.by, L.br);
+  const k = L.k, t0 = L.t0;
+  x.fillStyle = '#ff7088'; x.font = `600 ${Math.round(36 * k)}px ${FB}`; x.fillText('Craque do mês', L.tx, t0);
+  x.fillStyle = '#f2ece0'; x.font = `900 ${Math.round(96 * k)}px ${FD}`; x.fillText(fit(x, dn(mvp), 1020 - L.tx), L.tx - 4, t0 + 95 * k);
+  x.font = `900 ${Math.round(150 * k)}px ${FD}`; x.fillText(String(T[mvp.id].pts), L.tx - 4, t0 + 255 * k);
+  x.fillStyle = '#a7b0c5'; x.font = `800 ${Math.round(44 * k)}px ${FD}`; x.fillText('pontos', L.tx, t0 + 310 * k);
+  x.fillStyle = '#c9cfdc'; x.font = `600 ${Math.round(32 * k)}px ${FB}`;
+  x.fillText(mvp.pos === 'G' ? `${T[mvp.id].cs} sem sofrer gol` : `${T[mvp.id].g} gols, ${T[mvp.id].a} assist.`, L.tx, t0 + 370 * k);
+  x.fillText(`${T[mvp.id].p} presenças`, L.tx, t0 + 416 * k);
   // artilheiro e garçom
+  const B = FEED
+    ? { by: 765, bh: 530, lab: 56, scy: 235, sw: 210, sh: 270, bdx: 95, bdy: 110, bdr: 40, vy: 470, vf: 96, uy: 512 }
+    : { by: 1060, bh: 760, lab: 70, scy: 330, sw: 300, sh: 380, bdx: 140, bdy: 150, bdr: 50, vy: 660, vf: 120, uy: 712 };
   const box = async (kind, list, val, unit, bx) => {
-    const by = 1060, bw = 470, bh = 760;
+    const by = B.by, bw = 470, bh = B.bh;
     x.fillStyle = 'rgba(24,35,60,.9)'; rr(x, bx, by, bw, bh, 32); x.fill(); x.strokeStyle = '#27365a'; x.lineWidth = 2; x.stroke();
-    x.fillStyle = '#ff7088'; x.font = `600 34px ${FB}`; x.textAlign = 'center'; x.fillText(AWARD_LABEL[kind], bx + bw / 2, by + 70); x.textAlign = 'left';
+    x.fillStyle = '#ff7088'; x.font = `600 ${FEED ? 30 : 34}px ${FB}`; x.textAlign = 'center'; x.fillText(AWARD_LABEL[kind], bx + bw / 2, by + B.lab); x.textAlign = 'left';
     if (!list.length) { x.fillStyle = '#6f7a94'; x.font = `600 34px ${FB}`; x.textAlign = 'center'; x.fillText('Ninguém ainda', bx + bw / 2, by + bh / 2); x.textAlign = 'left'; return; }
     const p = list[0];
-    await drawSticker(x, p, bx + bw / 2, by + 330, 300, 380, kind === 'boot' ? -0.04 : 0.04);
-    await drawBadge(x, kind, bx + bw / 2 + 140, by + 150, 50);
+    await drawSticker(x, p, bx + bw / 2, by + B.scy, B.sw, B.sh, kind === 'boot' ? -0.04 : 0.04);
+    await drawBadge(x, kind, bx + bw / 2 + B.bdx, by + B.bdy, B.bdr);
     x.textAlign = 'center';
-    x.fillStyle = '#f2ece0'; x.font = `900 120px ${FD}`; x.fillText(String(val), bx + bw / 2, by + 660);
-    x.fillStyle = '#a7b0c5'; x.font = `700 32px ${FB}`; x.fillText(list.length > 1 ? `${unit}, empatados: ${list.length}` : unit, bx + bw / 2, by + 712);
+    x.fillStyle = '#f2ece0'; x.font = `900 ${B.vf}px ${FD}`; x.fillText(String(val), bx + bw / 2, by + B.vy);
+    x.fillStyle = '#a7b0c5'; x.font = `700 ${FEED ? 28 : 32}px ${FB}`; x.fillText(list.length > 1 ? `${unit}, empatados: ${list.length}` : unit, bx + bw / 2, by + B.uy);
     x.textAlign = 'left';
   };
   await box('boot', A.artilheiro, A.artilheiro.length ? T[A.artilheiro[0].id].g : 0, 'gols', 50);
   await box('hat', A.garcom, A.garcom.length ? T[A.garcom[0].id].a : 0, 'assistências', 560);
-  return canvasFile(c, `capelota-destaques-${y}-${String(m).padStart(2, '0')}.png`);
+  return canvasFile(c, `capelota-destaques-${y}-${String(m).padStart(2, '0')}-${FEED ? 'feed' : 'story'}.png`);
 }
 
-async function shareMonth() {
+async function shareMonth(fmt) {
   const { y, m } = state.awards;
   const A = C.monthAwards(store.rounds, store.players, y, m, store.settings);
   if (!A.mvp) return;
+  setFormat(fmt);
   toast('Montando as imagens…');
-  const files = [await storyTimeIdeal(A), await storyDestaques(A)];
+  const files = [await cardTimeIdeal(A), await cardDestaques(A)];
   await shareFiles(files);
+}
+
+// Pergunta onde vai postar: feed (4:5) ou story (9:16)
+function askFormat(title) {
+  return new Promise(res => {
+    openSheet(`<h2>${esc(title)}</h2><p class="muted" style="margin-bottom:16px">Onde você vai postar no Instagram?</p>
+      <div class="fmt-pick">
+        <button class="fmt" data-fmt="feed"><span class="shape feed"></span><b>Feed</b><span>1080 × 1350</span></button>
+        <button class="fmt" data-fmt="story"><span class="shape story"></span><b>Story</b><span>1080 × 1920</span></button>
+      </div>
+      <button class="btn ghost block" style="margin-top:12px" data-fmt="">Cancelar</button>`, s => {
+      s.addEventListener('click', ev => {
+        const b = ev.target.closest('[data-fmt]'); if (!b) return;
+        closeSheet(); res(b.dataset.fmt || null);
+      });
+    });
+  });
 }
 
 // ================= BACKUP =================
@@ -1347,8 +1396,14 @@ const actions = {
   'album-filter': el => { state.albumFilter = el.dataset.f; render(); },
   'player-new': () => store.isMaster ? playerSheet(null) : loginSheet(),
   'player-edit': el => playerSheet(JSON.parse(JSON.stringify(playerById(el.dataset.id)))),
-  'share-player': async el => { el.disabled = true; try { await sharePlayer(el.dataset.id); } finally { el.disabled = false; } },
-  'share-month': async el => { el.disabled = true; try { await shareMonth(); } finally { el.disabled = false; } },
+  'share-player': async el => {
+    const fmt = await askFormat('Compartilhar figurinha'); if (!fmt) return;
+    el.disabled = true; try { await sharePlayer(el.dataset.id, fmt); } finally { el.disabled = false; }
+  },
+  'share-month': async el => {
+    const fmt = await askFormat('Compartilhar prêmios do mês'); if (!fmt) return;
+    el.disabled = true; try { await shareMonth(fmt); } finally { el.disabled = false; }
+  },
   'login': () => loginSheet(),
   'logout': async () => { await store.logout(); toast('Você saiu do acesso master'); },
   'sheet-close': () => closeSheet(),
