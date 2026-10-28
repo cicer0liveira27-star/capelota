@@ -207,17 +207,16 @@ store.subscribe(() => {
 });
 
 // Lembrete de inadimplentes: a mensalidade vence no dia da primeira pelada do mês.
-// A partir desse dia, quem ainda não pagou aparece num aviso (uma vez por dia, só para a comissão).
+// A partir desse dia, quem ainda não pagou aparece num aviso toda vez que o app é aberto (só para a comissão).
 function debtReminder() {
   if (!store.isMaster || !store.ready) return;
   if (store.mode === 'cloud' && !store.financeLoaded) return;
   if (!sheetRoot.hidden) return;
+  if (state.debtShown) return;
   const today = C.isoDate(now());
-  const key = 'capelota:debt:' + today;
-  try { if (localStorage.getItem(key)) return; } catch (e) {}
   const list = K.overdue(store.players, store.rounds, store.finance, today);
   if (!list.length) return;
-  try { localStorage.setItem(key, '1'); } catch (e) {}
+  state.debtShown = true;
   const y = +today.slice(0, 4), m = +today.slice(5, 7);
   const due = K.dueDate(y, m);
   const total = list.reduce((a, f) => a + f.amount, 0);
@@ -1293,7 +1292,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 26.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 27.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
