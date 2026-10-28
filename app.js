@@ -729,7 +729,7 @@ function vCaixa() {
       <button aria-label="Mês anterior" data-act="cx-step" data-d="-1">${I.prev}</button>
       <div class="lbl">${C.MONTHS[s.m - 1]} ${s.y}</div>
       <button aria-label="Próximo mês" data-act="cx-step" data-d="1">${I.next}</button></div>`;
-  const seg = `<div class="seg cx-seg" style="margin-bottom:14px">${[['mens', 'Mensalidades'], ['dia', 'Diárias'], ['rec', 'Receitas'], ['desp', 'Despesas'], ['caixa', 'Caixa do mês']].map(([k, l]) => `<button class="${s.tab === k ? 'on' : ''}" data-act="cx-tab" data-t="${k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="seg cx-seg" style="margin-bottom:14px">${[['mens', 'Mensalidades'], ['dia', 'Diárias'], ['rec', 'Receitas'], ['desp', 'Despesas'], ['caixa', 'Caixa do mês'], ['total', 'Caixa total']].map(([k, l]) => `<button class="${s.tab === k ? 'on' : ''}" data-act="cx-tab" data-t="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
   if (s.tab === 'mens') {
     const reg = v.fees.filter(f => f.paid), inad = v.fees.filter(f => !f.paid);
@@ -768,14 +768,33 @@ function vCaixa() {
       ${isExp ? '' : `<div class="sheet-table" style="margin-top:12px">
         <button class="st-row cx-row" data-act="cx-tab" data-t="mens">${ico}<span class="nm">Mensalidades<small>${v.fees.filter(f => f.paid).length} de ${v.fees.length} pagas</small></span><span class="line"><b>${K.brl(T.feePaid)}</b></span></button>
         <button class="st-row cx-row" data-act="cx-tab" data-t="dia">${ico}<span class="nm">Diárias<small>${v.daily.filter(d => d.paid).reduce((x, d) => x + d.count, 0)} diárias recebidas</small></span><span class="line"><b>${K.brl(T.dayPaid)}</b></span></button></div>`}
-      <div class="cx-cards two" style="margin-top:10px">${cats.map(c => `<button class="cx-card ${isExp ? 'out' : 'in'}" data-act="cx-${kind}" data-cat="${esc(c.name)}"><span>${esc(c.name)}</span><b>${K.brl(c.amount)}</b><small>＋ lançar</small></button>`).join('')}</div>
+      <div class="cx-cards two" style="margin-top:10px">${cats.filter(c => c.typed).map(c => `<button class="cx-card ${isExp ? 'out' : 'in'}" data-act="cx-${kind}" data-cat="${esc(c.name)}"><span>${esc(c.name)}</span><b>${K.brl(c.amount)}</b><small>＋ lançar</small></button>`).join('')}</div>
       ${fixed.length ? `<div class="sec-head" style="margin-top:20px"><h2>Fixas do mês</h2><span class="muted small">entram sozinhas</span></div>
       <div class="sheet-table">${fixed.map(f => `<button class="st-row cx-row" data-act="cx-fixed" data-k="${kind}" data-n="${esc(f.name)}">${ico}<span class="nm">${esc(f.name)}<small>${f.custom ? 'valor ajustado neste mês' : f.freq === 'mes' ? 'todo mês' : `${K.brl(f.unit)} × ${f.n} ${f.n === 1 ? 'pelada' : 'peladas'}`}</small></span><span class="line"><b>${K.brl(f.amount)}</b></span></button>`).join('')}</div>` : ''}
       <div class="sec-head" style="margin-top:20px"><h2>Lançadas</h2></div>
       ${list.length ? `<div class="sheet-table">${list.map(x => `<button class="st-row cx-row" data-act="cx-${kind}" data-id="${esc(x.id)}">${ico}
-        <span class="nm">${esc(x.cat || 'Outros')}${x.desc ? ' · ' + esc(x.desc) : ''}<small>${fmtD(x.date)}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma ${word} avulsa lançada neste mês.</p></div>`}
+        <span class="nm">${esc(K.entryLabel(x))}<small>${fmtD(x.date)}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma ${word} lançada à mão neste mês.</p></div>`}
       <div class="btn-row" style="margin-top:12px"><button class="btn primary" data-act="cx-${kind}">＋ Lançar ${word}</button><button class="btn" data-act="cx-type" data-k="${kind}">＋ Cadastrar outra ${word}</button></div>
       <button class="btn sm ghost" style="margin-top:8px" data-act="cx-types" data-k="${kind}">⚙ Tipos de ${word} e valores fixos</button>`;
+  } else if (s.tab === 'total') {
+    const tv = K.totalView(store.players, store.rounds, store.finance, thisY(), thisM());
+    const ini = `${C.MONTHS[+K.FINANCE_START.slice(5) - 1].toLowerCase()}/${K.FINANCE_START.slice(0, 4)}`;
+    body = `<div class="cx-result ${tv.saldo >= 0 ? 'ok' : 'bad'}"><span>Saldo em caixa</span><b>${K.brl(tv.saldo)}</b>
+        <small>desde ${ini} até hoje</small></div>
+      <div class="cx-cards" style="margin-top:10px">
+        <div class="cx-card ok"><span>Entradas</span><b>${K.brl(tv.entradas)}</b><small>total</small></div>
+        <div class="cx-card bad"><span>Saídas</span><b>${K.brl(tv.saidas)}</b><small>total</small></div>
+        <div class="cx-card"><span>A receber</span><b>${K.brl(tv.aReceber)}</b><small>em aberto</small></div>
+      </div>
+      <div class="sec-head" style="margin-top:22px"><h2>Mês a mês</h2></div>
+      <div class="sheet-table">${tv.months.slice().reverse().map(x => `<button class="st-row cx-row" data-act="cx-goto" data-y="${x.y}" data-m="${x.m}"><span class="nm">${C.MONTHS[x.m - 1]} ${x.y}<small>Entradas ${K.brl(x.entradas)} · Saídas ${K.brl(x.saidas)}</small></span><span class="line"><b class="${x.resultado >= 0 ? 'cx-in' : 'cx-out'}">${x.resultado >= 0 ? '+' : ''}${K.brl(x.resultado)}</b></span></button>`).join('')}</div>
+      <div class="sec-head" style="margin-top:22px"><h2>De onde veio</h2></div>
+      <div class="sheet-table">
+        <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Mensalidades</span><span class="line"><b>${K.brl(tv.feePaid)}</b></span></div>
+        <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Diárias</span><span class="line"><b>${K.brl(tv.dayPaid)}</b></span></div>
+        ${tv.other ? `<div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Outras receitas</span><span class="line"><b>${K.brl(tv.other)}</b></span></div>` : ''}
+      </div>
+      <p class="hint" style="margin-top:10px">O caixa começou a ser controlado em ${ini}. Toque num mês para abrir.</p>`;
   } else {
     const acc = K.saldoAcumulado(store.players, store.rounds, store.finance, s.y, s.m);
     const outCats = v.expByCat.filter(c => c.amount), inCats = v.incByCat.filter(c => c.amount);
@@ -891,11 +910,11 @@ function entrySheet(kind, id, cat) {
   const today = C.isoDate(now());
   let rec = cur?.receiptId ? { receiptId: cur.receiptId, receiptName: cur.receiptName } : null;
   const catList = (kind === 'exp' ? cxCfg().exp : cxCfg().inc).map(t => t.name);
-  let c = cur?.cat || cat || (kind === 'inc' ? 'Outros' : catList[0]);
-  if (!catList.includes(c)) catList.push(c);
+  let c = (cur?.cat && cur.cat !== 'Outros') ? cur.cat : (cat || '');
+  if (c && !catList.includes(c)) catList.push(c);
   openSheet(`<h2>${cur ? 'Editar' : 'Nova'} ${kind === 'exp' ? 'despesa' : 'receita'}</h2>
-    <div class="field"><span class="lab">Tipo</span><div class="chips" id="exCat" style="margin:0">${catList.map(x => `<button type="button" class="chip ${x === c ? 'on' : ''}" data-x="cat" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>
-    <div class="field"><label for="exDesc">Descrição (opcional)</label><input class="input" id="exDesc" maxlength="60" value="${esc(cur?.desc || '')}" placeholder="${kind === 'exp' ? 'Ex.: 2 goleiros' : 'Ex.: venda de camisas'}"></div>
+    <div class="field"><label for="exDesc">Descrição</label><input class="input" id="exDesc" maxlength="60" value="${esc(cur?.desc || '')}" placeholder="${kind === 'exp' ? 'Ex.: Bola nova' : 'Ex.: Venda de camisas'}" ${cur || cat ? '' : 'autofocus'}></div>
+    ${catList.length ? `<div class="field"><span class="lab">Tipo cadastrado <span class="muted small">(opcional)</span></span><div class="chips" id="exCat" style="margin:0">${catList.map(x => `<button type="button" class="chip ${x === c ? 'on' : ''}" data-x="cat" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>` : ''}
     <div class="field"><label for="exVal">Valor</label><input class="input" id="exVal" inputmode="decimal" placeholder="0,00" value="${cur ? String(cur.amount).replace('.', ',') : (() => { const t = (kind === 'exp' ? cxCfg().exp : cxCfg().inc).find(t => t.name === c && t.freq === 'avulsa' && +t.amount > 0); return t ? String(t.amount).replace('.', ',') : ''; })()}"></div>
     <div class="field"><label for="exDate">Data</label><input class="input" type="date" id="exDate" value="${cur?.date || today}"></div>
     <div class="field"><span class="lab">Comprovante</span><div id="exRec"></div></div>
@@ -906,11 +925,12 @@ function entrySheet(kind, id, cat) {
     s.addEventListener('click', async ev => {
       const b = ev.target.closest('[data-x]'); if (!b) return;
       const x = b.dataset.x;
-      if (x === 'cat') { c = b.dataset.v; s.querySelectorAll('#exCat .chip').forEach(e => e.classList.toggle('on', e === b)); }
+      if (x === 'cat') { c = c === b.dataset.v ? '' : b.dataset.v; s.querySelectorAll('#exCat .chip').forEach(e => e.classList.toggle('on', e.dataset.v === c)); }
       if (x === 'view') openReceipt(rec.receiptId);
       if (x === 'att') { try { const r = await attachReceipt(); if (r) { rec = r; drawRec(); toast('Comprovante anexado'); } } catch (e) { toast(e.message, true); } }
       if (x === 'save' || x === 'del') {
         const amount = parseFloat(String(s.querySelector('#exVal').value).replace(/\./g, '').replace(',', '.'));
+        if (x === 'save' && !c && !s.querySelector('#exDesc').value.trim()) { toast('Coloque a descrição', true); return; }
         if (x === 'save' && !(amount > 0)) { toast('Coloque o valor', true); return; }
         const v2 = cxView(); let list = [...(v2.doc[listKey] || [])];
         if (x === 'del') list = list.filter(e => e.id !== id);
@@ -1377,7 +1397,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 29.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 30.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2206,6 +2226,7 @@ const actions = {
   'cx-fixed': el => fixedSheet(el.dataset.k, el.dataset.n),
   'cx-types': el => typesSheet(el.dataset.k),
   'cx-type': el => typeSheet(el.dataset.k),
+  'cx-goto': el => { Object.assign(state.cx, { y: +el.dataset.y, m: +el.dataset.m, tab: 'caixa' }); render(); window.scrollTo(0, 0); },
   'cx-tab': el => { state.cx.tab = el.dataset.t; render(); },
   'cx-filter': el => { state.cx.filter = el.dataset.f; render(); },
   'cx-fee': el => feeSheet(el.dataset.id),

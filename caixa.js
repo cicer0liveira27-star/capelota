@@ -1,21 +1,25 @@
 // Controle de caixa da Capelota (só masters): mensalidades, diárias, despesas e resultado do mês.
 export const DEFAULT_PRICES = { mensal: 50, diaria: 17 };
-export const EXPENSE_CATS = ['Aluguel do Campo', 'Goleiros', 'Água', 'Outros'];
+export const EXPENSE_CATS = ['Aluguel do Campo', 'Goleiros', 'Água'];
 // Tipos de despesa e receita. freq: 'mes' (todo mês), 'pelada' (toda pelada) ou 'avulsa' (lança quando acontece)
 export const FREQS = { mes: 'Todo mês', pelada: 'Toda pelada', avulsa: 'Avulsa' };
 export const DEFAULT_CONFIG = {
   exp: [
     { name: 'Aluguel do Campo', amount: 900, freq: 'mes' },
     { name: 'Goleiros', amount: 50, freq: 'pelada' },
-    { name: 'Água', amount: 8, freq: 'pelada' },
-    { name: 'Outros', amount: 0, freq: 'avulsa' }
+    { name: 'Água', amount: 8, freq: 'pelada' }
   ],
-  inc: [{ name: 'Outros', amount: 0, freq: 'avulsa' }]
+  inc: []
 };
 export const CONFIG_ID = '_config';
+// Nome que aparece para um lançamento: o tipo (se tiver) ou a descrição
+export const entryLabel = x => (x.cat && x.cat !== 'Outros') ? x.cat + (x.desc ? ' · ' + x.desc : '') : (x.desc || 'Sem descrição');
+const entryGroup = x => (x.cat && x.cat !== 'Outros') ? x.cat : (x.desc || 'Sem descrição');
 export function getConfig(finance) {
   const c = finance?.[CONFIG_ID] || {};
-  return { exp: c.exp?.length ? c.exp : DEFAULT_CONFIG.exp, inc: c.inc?.length ? c.inc : DEFAULT_CONFIG.inc };
+  // "Outros" deixou de existir: lançamento sem tipo usa a própria descrição
+  const clean = l => l.filter(t => !(t.name === 'Outros' && !(+t.amount)));
+  return { exp: clean(c.exp || DEFAULT_CONFIG.exp), inc: clean(c.inc || DEFAULT_CONFIG.inc) };
 }
 const isMonthKey = k => /^\d{4}-\d{2}$/.test(k);
 export const METHODS = ['PIX', 'Dinheiro', 'Cartão'];
@@ -87,8 +91,8 @@ export function monthView(players, rounds, y, m, doc, cfg) {
   // total por tipo (fixas + lançadas)
   const byCat = (kind, list, fixed) => {
     const names = [...(cfg[kind] || []).map(t => t.name)];
-    list.forEach(x => { const c = x.cat || 'Outros'; if (!names.includes(c)) names.push(c); });
-    return names.map(n => ({ name: n, amount: fixed.filter(f => f.name === n).reduce((a, f) => a + f.amount, 0) + list.filter(x => (x.cat || 'Outros') === n).reduce((a, x) => a + (+x.amount || 0), 0) }));
+    list.forEach(x => { const c = entryGroup(x); if (!names.includes(c)) names.push(c); });
+    return names.map(n => ({ name: n, typed: (cfg[kind] || []).some(t => t.name === n), amount: fixed.filter(f => f.name === n).reduce((a, f) => a + f.amount, 0) + list.filter(x => entryGroup(x) === n).reduce((a, x) => a + (+x.amount || 0), 0) }));
   };
   const entradas = feePaid + dayPaid + other;
   return { key, doc: d, fees, daily, nPel, fixedExp, fixedInc, expByCat: byCat('exp', d.expenses || [], fixedExp), incByCat: byCat('inc', d.income || [], fixedInc), totals: { feePaid, feeDue, dayPaid, dayDue, other, entradas, saidas: out, resultado: entradas - out, aReceber: feeDue + dayDue } };
@@ -115,4 +119,55 @@ export function overdue(players, rounds, finance, today) {
     mm++; if (mm > 12) { mm = 1; yy++; }
   }
   return out;
+}
+
+// Meses com caixa: de outubro/2026 até o mês pedido (e qualquer mês que tenha lançamento salvo)
+function caixaMonths(finance, y, m) {
+  const until = monthKey(y, m), set = new Set(Object.keys(finance || {}).filter(k => isMonthKey(k) && k <= until));
+  let yy = +FINANCE_START.slice(0, 4), mm = +FINANCE_START.slice(5, 7);
+  while (monthKey(yy, mm) <= until) { set.add(monthKey(yy, mm)); mm++; if (mm > 12) { mm = 1; yy++; } }
+  return [...set].sort();
+}
+
+// Caixa total: soma mês a mês até o mês pedido
+export function totalView(players, rounds, finance, y, m) {
+  const cfg = getConfig(finance);
+  const months = caixaMonths(finance, y, m).map(k => {
+    const [yy, mm] = k.split('-').map(Number);
+    const v = monthView(players, rounds, yy, mm, finance?.[k], cfg);
+    return { key: k, y: yy, m: mm, ...v.totals };
+  });
+  const sum = f => months.reduce((a, x) => a + x[f], 0);
+  return { months, entradas: sum('entradas'), saidas: sum('saidas'), saldo: sum('resultado'), aReceber: sum('aReceber'), feePaid: sum('feePaid'), dayPaid: sum('dayPaid'), other: sum('other') };
+}
+
+export function saldoAcumulado(players, rounds, finance, y, m) {
+  return totalView(players, rounds, finance, y, m).saldo;
+}
+
+// Guarda no doc só o necessário
+export function toDoc(view) {
+  const d = view.doc;
+  return { prices: d.prices, pix: d.pix || '', fees: d.fees || {}, daily: d.daily || {}, expenses: d.expenses || [], income: d.income || [], fixed: d.fixed || { exp: {}, inc: {} } };
+}
+
+// Lê arquivo (foto ou PDF) e devolve dataURL leve para guardar
+export async function readReceipt(file) {
+  if (!file) return null;
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+    if (file.size > 700 * 1024) throw new Error('PDF muito grande (máx. 700 KB). Mande uma foto do comprovante.');
+    const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+    return { name: file.name, type: 'pdf', data };
+  }
+  // imagem: reduz para no máximo 1280 px e JPEG
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    let q = 0.75, data = c.toDataURL('image/jpeg', q);
+    while (data.length > 900 * 1024 && q > 0.35) { q -= 0.1; data = c.toDataURL('image/jpeg', q); }
+    return { name: file.name || 'comprovante.jpg', type: 'img', data };
+  } finally { URL.revokeObjectURL(url); }
 }
