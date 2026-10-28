@@ -714,7 +714,8 @@ function vSorteio() {
 
 // ================= CAIXA (só masters) =================
 state.cx = { y: thisY(), m: thisM(), tab: 'mens', filter: 'all' };
-const cxView = () => K.monthView(store.players, store.rounds, state.cx.y, state.cx.m, store.finance[K.monthKey(state.cx.y, state.cx.m)]);
+const cxCfg = () => K.getConfig(store.finance);
+const cxView = () => K.monthView(store.players, store.rounds, state.cx.y, state.cx.m, store.finance[K.monthKey(state.cx.y, state.cx.m)], cxCfg());
 async function cxSave(view, msg) {
   try { const r = await store.saveFinance(view.key, K.toDoc(view)); if (msg) toast(r === 'queued' ? msg + ' (sincroniza quando a internet voltar)' : msg); }
   catch (e) { toast(e.message, true); }
@@ -755,44 +756,44 @@ function vCaixa() {
         <span class="nm">${esc(dn(d.p))}<small>${TIPOS[tipoOf(d.p)]} · ${d.count} ${d.count === 1 ? 'presença' : 'presenças'}${d.receiptId ? ' · 📎' : ''}</small></span>
         <span class="line"><b>${K.brl(d.amount)}</b>${pill(d.paid, 'Pago', 'Pendente')}</span></button>`).join('')}</div>` : `<div class="empty"><p>Nenhum diarista jogou neste mês.</p></div>`}
       <p class="hint" style="margin-top:10px">As diárias saem das presenças nas rodadas do mês (${K.brl(v.doc.prices.diaria)} cada) e entram como pagas. Toque para marcar como pendente.</p>`;
-  } else if (s.tab === 'rec') {
-    const inc = (v.doc.income || []).slice().sort((x, y) => (y.date || '').localeCompare(x.date || ''));
-    body = `<div class="cx-result ok"><span>Receitas de ${C.MONTHS[s.m - 1].toLowerCase()}</span><b>${K.brl(T.entradas)}</b>
-        <small>tudo que entrou no caixa</small></div>
-      <div class="sheet-table" style="margin-top:12px">
-        <button class="st-row cx-row" data-act="cx-tab" data-t="mens"><span class="cx-ico in">＋</span><span class="nm">Mensalidades<small>${v.fees.filter(f => f.paid).length} de ${v.fees.length} pagas</small></span><span class="line"><b>${K.brl(T.feePaid)}</b></span></button>
-        <button class="st-row cx-row" data-act="cx-tab" data-t="dia"><span class="cx-ico in">＋</span><span class="nm">Diárias<small>${v.daily.filter(d => d.paid).reduce((x, d) => x + d.count, 0)} diárias recebidas</small></span><span class="line"><b>${K.brl(T.dayPaid)}</b></span></button>
-        ${inc.map(x => `<button class="st-row cx-row" data-act="cx-inc" data-id="${esc(x.id)}"><span class="cx-ico in">＋</span><span class="nm">${esc(x.desc || 'Outra receita')}<small>${fmtD(x.date)}${x.method ? ' · ' + esc(x.method) : ''}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}
-      </div>
-      <button class="btn block" style="margin-top:12px" data-act="cx-inc">＋ Nova receita</button>
-      <p class="hint" style="margin-top:10px">Mensalidades e diárias entram sozinhas. Use “Nova receita” para outras entradas (patrocínio, venda de uniforme, multa…).</p>`;
-  } else if (s.tab === 'desp') {
-    const exp = (v.doc.expenses || []).slice().sort((x, y) => (y.date || '').localeCompare(x.date || ''));
-    const byCat = K.EXPENSE_CATS.map(c => [c, exp.filter(x => (x.cat || 'Outros') === c).reduce((a, x) => a + (+x.amount || 0), 0)]);
-    body = `<div class="cx-result bad"><span>Despesas de ${C.MONTHS[s.m - 1].toLowerCase()}</span><b>${K.brl(T.saidas)}</b>
-        <small>tudo que saiu do caixa</small></div>
-      <div class="cx-cards two" style="margin-top:10px">${byCat.map(([c, val]) => `<button class="cx-card" data-act="cx-exp" data-cat="${esc(c)}"><span>${esc(c)}</span><b>${K.brl(val)}</b><small>＋ lançar</small></button>`).join('')}</div>
-      ${exp.length ? `<div class="sheet-table" style="margin-top:12px">${exp.map(x => `<button class="st-row cx-row" data-act="cx-exp" data-id="${esc(x.id)}"><span class="cx-ico out">−</span>
-        <span class="nm">${esc(x.cat)}${x.desc ? ' · ' + esc(x.desc) : ''}<small>${fmtD(x.date)}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma despesa lançada neste mês.</p></div>`}
-      <button class="btn block" style="margin-top:12px" data-act="cx-exp">＋ Nova despesa</button>`;
+  } else if (s.tab === 'rec' || s.tab === 'desp') {
+    const isExp = s.tab === 'desp', kind = isExp ? 'exp' : 'inc';
+    const list = ((isExp ? v.doc.expenses : v.doc.income) || []).slice().sort((x, y) => (y.date || '').localeCompare(x.date || ''));
+    const fixed = isExp ? v.fixedExp : v.fixedInc;
+    const cats = isExp ? v.expByCat : v.incByCat;
+    const word = isExp ? 'despesa' : 'receita';
+    const ico = isExp ? '<span class="cx-ico out">−</span>' : '<span class="cx-ico in">＋</span>';
+    body = `<div class="cx-result ${isExp ? 'bad' : 'ok'}"><span>${isExp ? 'Despesas' : 'Receitas'} de ${C.MONTHS[s.m - 1].toLowerCase()}</span><b>${K.brl(isExp ? T.saidas : T.entradas)}</b>
+        <small>${isExp ? 'tudo que saiu do caixa' : 'tudo que entrou no caixa'} · ${v.nPel} ${v.nPel === 1 ? 'pelada' : 'peladas'} no mês</small></div>
+      ${isExp ? '' : `<div class="sheet-table" style="margin-top:12px">
+        <button class="st-row cx-row" data-act="cx-tab" data-t="mens">${ico}<span class="nm">Mensalidades<small>${v.fees.filter(f => f.paid).length} de ${v.fees.length} pagas</small></span><span class="line"><b>${K.brl(T.feePaid)}</b></span></button>
+        <button class="st-row cx-row" data-act="cx-tab" data-t="dia">${ico}<span class="nm">Diárias<small>${v.daily.filter(d => d.paid).reduce((x, d) => x + d.count, 0)} diárias recebidas</small></span><span class="line"><b>${K.brl(T.dayPaid)}</b></span></button></div>`}
+      <div class="cx-cards two" style="margin-top:10px">${cats.map(c => `<button class="cx-card ${isExp ? 'out' : 'in'}" data-act="cx-${kind}" data-cat="${esc(c.name)}"><span>${esc(c.name)}</span><b>${K.brl(c.amount)}</b><small>＋ lançar</small></button>`).join('')}</div>
+      ${fixed.length ? `<div class="sec-head" style="margin-top:20px"><h2>Fixas do mês</h2><span class="muted small">entram sozinhas</span></div>
+      <div class="sheet-table">${fixed.map(f => `<button class="st-row cx-row" data-act="cx-fixed" data-k="${kind}" data-n="${esc(f.name)}">${ico}<span class="nm">${esc(f.name)}<small>${f.custom ? 'valor ajustado neste mês' : f.freq === 'mes' ? 'todo mês' : `${K.brl(f.unit)} × ${f.n} ${f.n === 1 ? 'pelada' : 'peladas'}`}</small></span><span class="line"><b>${K.brl(f.amount)}</b></span></button>`).join('')}</div>` : ''}
+      <div class="sec-head" style="margin-top:20px"><h2>Lançadas</h2></div>
+      ${list.length ? `<div class="sheet-table">${list.map(x => `<button class="st-row cx-row" data-act="cx-${kind}" data-id="${esc(x.id)}">${ico}
+        <span class="nm">${esc(x.cat || 'Outros')}${x.desc ? ' · ' + esc(x.desc) : ''}<small>${fmtD(x.date)}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma ${word} avulsa lançada neste mês.</p></div>`}
+      <div class="btn-row" style="margin-top:12px"><button class="btn primary" data-act="cx-${kind}">＋ Lançar ${word}</button><button class="btn" data-act="cx-type" data-k="${kind}">＋ Cadastrar outra ${word}</button></div>
+      <button class="btn sm ghost" style="margin-top:8px" data-act="cx-types" data-k="${kind}">⚙ Tipos de ${word} e valores fixos</button>`;
   } else {
     const acc = K.saldoAcumulado(store.players, store.rounds, store.finance, s.y, s.m);
-    const exp = v.doc.expenses || [];
-    const cats = K.EXPENSE_CATS.map(c => [c, exp.filter(x => (x.cat || 'Outros') === c).reduce((a, x) => a + (+x.amount || 0), 0)]).filter(([, val]) => val);
+    const outCats = v.expByCat.filter(c => c.amount), inCats = v.incByCat.filter(c => c.amount);
     body = `<div class="cx-result ${T.resultado >= 0 ? 'ok' : 'bad'}"><span>Resultado de ${C.MONTHS[s.m - 1].toLowerCase()}</span><b>${K.brl(T.resultado)}</b>
         <small>Entradas ${K.brl(T.entradas)} − Saídas ${K.brl(T.saidas)}</small></div>
       <div class="cx-cards" style="margin-top:10px">
         <div class="cx-card"><span>Saldo acumulado</span><b>${K.brl(acc)}</b><small>todos os meses até aqui</small></div>
         <div class="cx-card bad"><span>A receber</span><b>${K.brl(T.aReceber)}</b><small>inadimplentes e pendentes</small></div>
+        <div class="cx-card"><span>Peladas</span><b>${v.nPel}</b><small>no mês</small></div>
       </div>
       <div class="sec-head" style="margin-top:22px"><h2>Entradas</h2><b class="cx-in">${K.brl(T.entradas)}</b></div>
       <div class="sheet-table">
         <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Mensalidades</span><span class="line"><b>${K.brl(T.feePaid)}</b></span></div>
         <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Diárias</span><span class="line"><b>${K.brl(T.dayPaid)}</b></span></div>
-        ${T.other ? `<div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Outras receitas</span><span class="line"><b>${K.brl(T.other)}</b></span></div>` : ''}
+        ${inCats.map(c => `<div class="st-row"><span class="cx-ico in">＋</span><span class="nm">${esc(c.name)}</span><span class="line"><b>${K.brl(c.amount)}</b></span></div>`).join('')}
       </div>
       <div class="sec-head" style="margin-top:22px"><h2>Saídas</h2><b class="cx-out">${K.brl(T.saidas)}</b></div>
-      ${cats.length ? `<div class="sheet-table">${cats.map(([c, val]) => `<div class="st-row"><span class="cx-ico out">−</span><span class="nm">${esc(c)}</span><span class="line"><b>${K.brl(val)}</b></span></div>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma despesa lançada.</p></div>`}
+      ${outCats.length ? `<div class="sheet-table">${outCats.map(c => `<div class="st-row"><span class="cx-ico out">−</span><span class="nm">${esc(c.name)}</span><span class="line"><b>${K.brl(c.amount)}</b></span></div>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma despesa no mês.</p></div>`}
       <div class="btn-row" style="margin-top:14px"><button class="btn sm" data-act="cx-tab" data-t="rec">Ver receitas</button><button class="btn sm" data-act="cx-tab" data-t="desp">Ver despesas</button></div>
       <button class="btn sm" style="margin-top:10px" data-act="cx-prices">Valores: mensalidade ${K.brl(v.doc.prices.mensal)} · diária ${K.brl(v.doc.prices.diaria)}</button>`;
   }
@@ -889,11 +890,13 @@ function entrySheet(kind, id, cat) {
   const cur = id ? (v.doc[listKey] || []).find(x => x.id === id) : null;
   const today = C.isoDate(now());
   let rec = cur?.receiptId ? { receiptId: cur.receiptId, receiptName: cur.receiptName } : null;
-  let c = cur?.cat || cat || K.EXPENSE_CATS[0];
+  const catList = (kind === 'exp' ? cxCfg().exp : cxCfg().inc).map(t => t.name);
+  let c = cur?.cat || cat || (kind === 'inc' ? 'Outros' : catList[0]);
+  if (!catList.includes(c)) catList.push(c);
   openSheet(`<h2>${cur ? 'Editar' : 'Nova'} ${kind === 'exp' ? 'despesa' : 'receita'}</h2>
-    ${kind === 'exp' ? `<div class="field"><span class="lab">Categoria</span><div class="chips" id="exCat" style="margin:0">${K.EXPENSE_CATS.map(x => `<button type="button" class="chip ${x === c ? 'on' : ''}" data-x="cat" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>` : ''}
-    <div class="field"><label for="exDesc">Descrição ${kind === 'exp' ? '(opcional)' : ''}</label><input class="input" id="exDesc" maxlength="60" value="${esc(cur?.desc || '')}" placeholder="${kind === 'exp' ? 'Ex.: 2 goleiros' : 'Ex.: venda de camisas'}"></div>
-    <div class="field"><label for="exVal">Valor</label><input class="input" id="exVal" inputmode="decimal" placeholder="0,00" value="${cur ? String(cur.amount).replace('.', ',') : ''}"></div>
+    <div class="field"><span class="lab">Tipo</span><div class="chips" id="exCat" style="margin:0">${catList.map(x => `<button type="button" class="chip ${x === c ? 'on' : ''}" data-x="cat" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>
+    <div class="field"><label for="exDesc">Descrição (opcional)</label><input class="input" id="exDesc" maxlength="60" value="${esc(cur?.desc || '')}" placeholder="${kind === 'exp' ? 'Ex.: 2 goleiros' : 'Ex.: venda de camisas'}"></div>
+    <div class="field"><label for="exVal">Valor</label><input class="input" id="exVal" inputmode="decimal" placeholder="0,00" value="${cur ? String(cur.amount).replace('.', ',') : (() => { const t = (kind === 'exp' ? cxCfg().exp : cxCfg().inc).find(t => t.name === c && t.freq === 'avulsa' && +t.amount > 0); return t ? String(t.amount).replace('.', ',') : ''; })()}"></div>
     <div class="field"><label for="exDate">Data</label><input class="input" type="date" id="exDate" value="${cur?.date || today}"></div>
     <div class="field"><span class="lab">Comprovante</span><div id="exRec"></div></div>
     <button class="btn primary block" data-x="save">Salvar</button>
@@ -912,12 +915,93 @@ function entrySheet(kind, id, cat) {
         const v2 = cxView(); let list = [...(v2.doc[listKey] || [])];
         if (x === 'del') list = list.filter(e => e.id !== id);
         else {
-          const item = { id: id || ('e-' + store.newId()), desc: s.querySelector('#exDesc').value.trim(), amount, date: s.querySelector('#exDate').value || today, ...(kind === 'exp' ? { cat: c } : {}), ...(rec || {}) };
+          const item = { id: id || ('e-' + store.newId()), desc: s.querySelector('#exDesc').value.trim(), amount, date: s.querySelector('#exDate').value || today, cat: c, ...(rec || {}) };
           list = id ? list.map(e => e.id === id ? item : e) : [...list, item];
         }
         v2.doc[listKey] = list; closeSheet();
         await cxSave(v2, x === 'del' ? 'Lançamento apagado' : (kind === 'exp' ? 'Despesa lançada' : 'Receita lançada'));
       }
+    });
+  });
+}
+
+const parseBRL = v => parseFloat(String(v).replace(/\./g, '').replace(',', '.'));
+const fmtNum = n => String(n).replace('.', ',');
+
+// Ajusta (ou tira) uma fixa só neste mês
+function fixedSheet(kind, name) {
+  const v = cxView(); const f = (kind === 'exp' ? v.fixedExp : v.fixedInc).find(x => x.name === name); if (!f) return;
+  const base = f.freq === 'mes' ? f.unit : f.unit * f.n;
+  openSheet(`<h2>${esc(name)} · ${C.MONTHS[state.cx.m - 1].toLowerCase()}</h2>
+    <p class="muted">Valor fixo: ${K.brl(f.unit)} ${f.freq === 'mes' ? 'por mês' : `por pelada × ${f.n} = ${K.brl(base)}`}.</p>
+    <div class="field" style="margin-top:12px"><label for="fxVal">Valor neste mês</label><input class="input" id="fxVal" inputmode="decimal" value="${fmtNum(f.amount)}"></div>
+    <button class="btn primary block" data-x="save">Salvar valor do mês</button>
+    ${f.custom ? '<button class="btn block" style="margin-top:8px" data-x="reset">Voltar ao valor fixo</button>' : ''}
+    <button class="btn danger block" style="margin-top:8px" data-x="off">Não teve neste mês</button>`, s => {
+    s.addEventListener('click', async ev => {
+      const x = ev.target.closest('[data-x]')?.dataset.x; if (!x) return;
+      const v2 = cxView(); const fx = { ...(v2.doc.fixed[kind] || {}) };
+      if (x === 'save') { const a = parseBRL(s.querySelector('#fxVal').value); if (!(a >= 0)) { toast('Valor inválido', true); return; } fx[name] = a === base ? undefined : { amount: a }; }
+      if (x === 'reset') delete fx[name];
+      if (x === 'off') fx[name] = { off: true };
+      Object.keys(fx).forEach(k => fx[k] === undefined && delete fx[k]);
+      v2.doc.fixed = { ...v2.doc.fixed, [kind]: fx }; closeSheet();
+      await cxSave(v2, x === 'off' ? `${name} tirada deste mês` : 'Valor do mês salvo');
+    });
+  });
+}
+
+async function saveCfg(cfg, msg) {
+  try { const r = await store.saveFinance(K.CONFIG_ID, cfg); toast(r === 'queued' ? msg + ' (sincroniza quando a internet voltar)' : msg); }
+  catch (e) { toast(e.message, true); }
+}
+
+// Lista de tipos de despesa/receita
+function typesSheet(kind) {
+  const cfg = cxCfg(); const word = kind === 'exp' ? 'despesa' : 'receita';
+  openSheet(`<h2>Tipos de ${word}</h2>
+    <p class="muted">Os de “todo mês” e “toda pelada” entram sozinhos no caixa. Os avulsos você lança quando acontecem.</p>
+    <div class="sheet-table" style="margin-top:10px">${cfg[kind].map((t, i) => `<button class="st-row cx-row" data-x="ed" data-i="${i}"><span class="nm">${esc(t.name)}<small>${K.FREQS[t.freq] || 'Avulsa'}</small></span><span class="line"><b>${+t.amount ? K.brl(t.amount) : '—'}</b></span></button>`).join('')}</div>
+    <button class="btn primary block" style="margin-top:12px" data-x="new">＋ Cadastrar outra ${word}</button>`, s => {
+    s.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-x]'); if (!b) return;
+      if (b.dataset.x === 'new') typeSheet(kind);
+      if (b.dataset.x === 'ed') typeSheet(kind, +b.dataset.i);
+    });
+  });
+}
+
+// Cadastra/edita um tipo
+function typeSheet(kind, idx) {
+  const cfg = cxCfg(); const list = [...cfg[kind]]; const cur = idx != null ? list[idx] : null;
+  const word = kind === 'exp' ? 'despesa' : 'receita';
+  let freq = cur?.freq || 'avulsa';
+  openSheet(`<h2>${cur ? 'Editar' : 'Cadastrar'} ${word}</h2>
+    <div class="field"><label for="tpName">Nome</label><input class="input" id="tpName" maxlength="30" value="${esc(cur?.name || '')}" placeholder="${kind === 'exp' ? 'Ex.: Bola, Coletes, Arbitragem' : 'Ex.: Patrocínio, Uniforme, Multa'}" ${cur ? '' : 'autofocus'}></div>
+    <div class="field"><span class="lab">Quando acontece</span><div class="chips" id="tpFreq" style="margin:0">${Object.entries(K.FREQS).map(([k, l]) => `<button type="button" class="chip ${k === freq ? 'on' : ''}" data-x="fq" data-v="${k}">${l}</button>`).join('')}</div></div>
+    <div class="field"><label for="tpVal">Valor <span class="muted small">(${kind === 'exp' ? 'por mês, por pelada ou sugestão para o avulso' : 'por mês, por pelada ou sugestão para o avulso'})</span></label><input class="input" id="tpVal" inputmode="decimal" placeholder="0,00" value="${cur && +cur.amount ? fmtNum(cur.amount) : ''}"></div>
+    <p class="hint" style="margin-bottom:12px">Mudar o valor vale para todos os meses que não foram ajustados à mão.</p>
+    <button class="btn primary block" data-x="save">Salvar</button>
+    ${cur ? '<button class="btn danger block" style="margin-top:8px" data-x="del">Apagar tipo</button>' : ''}`, s => {
+    s.addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-x]'); if (!b) return;
+      const x = b.dataset.x;
+      if (x === 'fq') { freq = b.dataset.v; s.querySelectorAll('#tpFreq .chip').forEach(e => e.classList.toggle('on', e === b)); return; }
+      if (x === 'del') {
+        if (!(await confirmSheet('Apagar tipo', `Apagar “${esc(cur.name)}”? Os lançamentos já feitos continuam no caixa.`, 'Apagar'))) return;
+        list.splice(idx, 1);
+      }
+      if (x === 'save') {
+        const name = s.querySelector('#tpName').value.trim();
+        const amount = parseBRL(s.querySelector('#tpVal').value) || 0;
+        if (!name) { toast('Coloque o nome', true); return; }
+        if (list.some((t, i) => i !== idx && t.name.toLowerCase() === name.toLowerCase())) { toast('Já existe um tipo com esse nome', true); return; }
+        if (freq !== 'avulsa' && !(amount > 0)) { toast('Coloque o valor fixo', true); return; }
+        const item = { name, amount, freq };
+        if (cur) list[idx] = item; else list.push(item);
+      }
+      closeSheet();
+      await saveCfg({ ...cfg, [kind]: list }, x === 'del' ? 'Tipo apagado' : `${word[0].toUpperCase() + word.slice(1)} salva`);
     });
   });
 }
@@ -1293,7 +1377,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 28.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 29.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2119,12 +2203,15 @@ const actions = {
   },
   'cx-step': el => { let { y, m } = state.cx; m += +el.dataset.d; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; } state.cx.y = y; state.cx.m = m; render(); },
   'cx-debt': () => { closeSheet(); const o = K.overdue(store.players, store.rounds, store.finance, C.isoDate(now()))[0]; Object.assign(state.cx, { y: o?.y || thisY(), m: o?.m || thisM(), tab: 'mens', filter: 'inad' }); if (location.hash === '#/caixa') render(); else location.hash = '#/caixa'; },
+  'cx-fixed': el => fixedSheet(el.dataset.k, el.dataset.n),
+  'cx-types': el => typesSheet(el.dataset.k),
+  'cx-type': el => typeSheet(el.dataset.k),
   'cx-tab': el => { state.cx.tab = el.dataset.t; render(); },
   'cx-filter': el => { state.cx.filter = el.dataset.f; render(); },
   'cx-fee': el => feeSheet(el.dataset.id),
   'cx-day': el => daySheet(el.dataset.id),
   'cx-exp': el => entrySheet('exp', el.dataset.id, el.dataset.cat),
-  'cx-inc': el => entrySheet('inc', el.dataset.id),
+  'cx-inc': el => entrySheet('inc', el.dataset.id, el.dataset.cat),
   'cx-prices': () => pricesSheet(),
   'cx-addfee': async () => {
     const v = cxView(); const inList = new Set(v.fees.map(f => f.id));

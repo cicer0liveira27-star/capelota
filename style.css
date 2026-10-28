@@ -657,3 +657,4 @@ details.panel summary::-webkit-details-marker { color: var(--texto-3); }
 .cx-cards.two { grid-template-columns: repeat(2, 1fr); }
 button.cx-card { text-align: left; color: var(--texto); font: inherit; cursor: pointer; }
 button.cx-card b { color: var(--sombrero-claro); }
+button.cx-card.in b { color: #3ccf8e; }
