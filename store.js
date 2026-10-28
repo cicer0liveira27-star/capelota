@@ -312,11 +312,25 @@ class Store {
     this.user = { ...this.user, name }; this._emit();
   }
 
+  // Banco ainda vazio mostrando a planilha: antes da 1ª edição, grava a planilha inteira no banco,
+  // para que a edição de um atleta não faça os outros sumirem para todo mundo.
+  async _ensureBase() {
+    if (this.mode !== 'cloud' || !this.usingSeed || !this._seedData) return;
+    if (this._basing) return this._basing;
+    this._basing = (async () => {
+      const sd = this._seedData;
+      await this.importAll({ app: 'capelota', version: 1, players: sd.players, rounds: sd.rounds, settings: sd.settings });
+      this.usingSeed = false; this._seedData = null;
+    })();
+    try { await this._basing; } finally { this._basing = null; }
+  }
+
   // ---------- players ----------
   newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
   async savePlayer(p) {
     this._requireMaster();
+    await this._ensureBase();
     const data = { ...p };
     if (!data.id) { data.id = this.newId(); data.createdAt = Date.now(); }
     data.updatedAt = Date.now();
@@ -330,6 +344,7 @@ class Store {
   }
   async deletePlayer(id) {
     this._requireMaster();
+    await this._ensureBase();
     if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.deleteDoc(fsM.doc(db, 'players', id))); }
     this.players = this.players.filter(x => x.id !== id);
     this._persistLocal(); this._emit(); return 'ok';
@@ -338,6 +353,7 @@ class Store {
   // ---------- rounds (id = data AAAA-MM-DD) ----------
   async saveRound(r, previousId) {
     this._requireMaster();
+    await this._ensureBase();
     const data = { ...r, id: r.id || r.date, updatedAt: Date.now(), updatedBy: this.user?.name || '' };
     if (this.mode === 'cloud') {
       const { db, fsM } = this.fb; const { id, ...rest } = data;
@@ -350,6 +366,7 @@ class Store {
   }
   async deleteRound(id) {
     this._requireMaster();
+    await this._ensureBase();
     if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.deleteDoc(fsM.doc(db, 'rounds', id))); }
     this.rounds = this.rounds.filter(x => x.id !== id);
     this._persistLocal(); this._emit(); return 'ok';
@@ -358,6 +375,7 @@ class Store {
   // ---------- settings ----------
   async saveSettings(s) {
     this._requireMaster();
+    await this._ensureBase();
     const data = normSettings(s);
     if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'settings', 'main'), data)); }
     this.settings = data; this._persistLocal(); this._emit(); return 'ok';
@@ -366,6 +384,7 @@ class Store {
   // ---------- sorteio publicado ----------
   async saveDraw(d) {
     this._requireMaster();
+    await this._ensureBase();
     const data = { ...d, at: Date.now(), by: this.user?.name || '' };
     if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'settings', 'draw'), data)); }
     this.draw = data; this._persistLocal(); this._emit(); return 'ok';
