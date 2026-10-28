@@ -1,6 +1,7 @@
 import { store, onlyDigits, validCpf, maskCpfEnd } from './store.js';
 import * as C from './calc.js';
 import * as L from './live.js';
+import * as K from './caixa.js';
 
 // ================= utilidades =================
 const $ = (s, el = document) => el.querySelector(s);
@@ -125,9 +126,10 @@ function route() {
 
 // Torcedor (sem login): só times sorteados, ranking e craque/time ideal. Masters veem tudo.
 const PUBLIC_ROUTES = ['sorteio', 'ranking', 'premios', 'ajustes'];
-const TABS_MASTER = [['inicio', 'Início', 'home'], ['ranking', 'Ranking', 'rank'], ['atletas', 'Atletas', 'cards'], ['sorteio', 'Sorteio', 'shuffle'], ['premios', 'Prêmios', 'trophy']];
+const TABS_MASTER = [['inicio', 'Início', 'home'], ['ranking', 'Ranking', 'rank'], ['atletas', 'Atletas', 'cards'], ['sorteio', 'Sorteio', 'shuffle'], ['premios', 'Prêmios', 'trophy'], ['caixa', 'Caixa', 'cash']];
 const TABS_PUBLIC = [['sorteio', 'Times', 'shirt'], ['ranking', 'Ranking', 'rank'], ['premios', 'Craque do mês', 'trophy']];
 const TAB_ICONS = {
+  cash: '<rect x="2.5" y="6" width="19" height="13" rx="2"/><circle cx="12" cy="12.5" r="2.6"/><path d="M6 9.5v.01M18 15.5v.01M5 6l9-3 2 3"/>',
   home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   rank: '<path d="M4 21V11M10 21V4M16 21v-7M22 21H2"/>',
   cards: '<rect x="4" y="3" width="11" height="15" rx="1.5"/><path d="M9 21h10a1 1 0 0 0 1-1V7"/><circle cx="9.5" cy="9" r="2.3"/><path d="M6.5 15c.6-1.8 1.7-2.6 3-2.6s2.4.8 3 2.6"/>',
@@ -153,7 +155,7 @@ function render() {
   if (!store.isMaster && !PUBLIC_ROUTES.includes(r.name)) {
     history.replaceState(null, '', '#/sorteio'); r = route();
   }
-  const tab = { partida: 'sorteio', inicio: 'inicio', rodada: 'inicio', lancar: 'inicio', ranking: 'ranking', atletas: 'atletas', atleta: 'atletas', sorteio: 'sorteio', premios: 'premios' }[r.name];
+  const tab = { caixa: 'caixa', partida: 'sorteio', inicio: 'inicio', rodada: 'inicio', lancar: 'inicio', ranking: 'ranking', atletas: 'atletas', atleta: 'atletas', sorteio: 'sorteio', premios: 'premios' }[r.name];
   $$('.tabbar a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   const chip = $('#masterChip');
   chip.hidden = !store.isMaster;
@@ -164,7 +166,7 @@ function render() {
     return;
   }
   view.classList.remove('has-savebar');
-  const views = { inicio: vInicio, ranking: vRanking, atletas: vAtletas, atleta: vAtleta, sorteio: vSorteio, premios: vPremios, ajustes: vAjustes, rodada: vRodada, lancar: vLancar, partida: vPartida };
+  const views = { inicio: vInicio, ranking: vRanking, atletas: vAtletas, atleta: vAtleta, sorteio: vSorteio, premios: vPremios, ajustes: vAjustes, rodada: vRodada, lancar: vLancar, partida: vPartida, caixa: vCaixa };
   const fn = views[r.name] || vInicio;
   view.innerHTML = fn(r.arg);
 }
@@ -684,6 +686,206 @@ function vSorteio() {
     ${result}`;
 }
 
+// ================= CAIXA (só masters) =================
+state.cx = { y: thisY(), m: thisM(), tab: 'mens', filter: 'all' };
+const cxView = () => K.monthView(store.players, store.rounds, state.cx.y, state.cx.m, store.finance[K.monthKey(state.cx.y, state.cx.m)]);
+async function cxSave(view, msg) {
+  try { const r = await store.saveFinance(view.key, K.toDoc(view)); if (msg) toast(r === 'queued' ? msg + ' (sincroniza quando a internet voltar)' : msg); }
+  catch (e) { toast(e.message, true); }
+}
+const pill = (ok, okTxt, badTxt) => `<span class="cx-pill ${ok ? 'ok' : 'bad'}">${ok ? okTxt : badTxt}</span>`;
+const fmtD = s => s ? C.fmtDate(s, { year: false }) : '';
+
+function vCaixa() {
+  if (!store.isMaster) { location.hash = '#/sorteio'; return ''; }
+  const v = cxView(), T = v.totals, s = state.cx;
+  const nav = `<div class="stepnav" style="margin:0 0 14px">
+      <button aria-label="Mês anterior" data-act="cx-step" data-d="-1">${I.prev}</button>
+      <div class="lbl">${C.MONTHS[s.m - 1]} ${s.y}</div>
+      <button aria-label="Próximo mês" data-act="cx-step" data-d="1">${I.next}</button></div>`;
+  const seg = `<div class="seg" style="margin-bottom:14px">${[['mens', 'Mensalidades'], ['dia', 'Diárias'], ['caixa', 'Caixa do mês']].map(([k, l]) => `<button class="${s.tab === k ? 'on' : ''}" data-act="cx-tab" data-t="${k}">${l}</button>`).join('')}</div>`;
+  let body = '';
+  if (s.tab === 'mens') {
+    const reg = v.fees.filter(f => f.paid), inad = v.fees.filter(f => !f.paid);
+    const list = s.filter === 'reg' ? reg : s.filter === 'inad' ? inad : v.fees;
+    body = `<div class="cx-cards">
+        <div class="cx-card ok"><span>Regulares</span><b>${reg.length}</b><small>${K.brl(T.feePaid)}</small></div>
+        <div class="cx-card bad"><span>Inadimplentes</span><b>${inad.length}</b><small>${K.brl(T.feeDue)} a receber</small></div>
+        <div class="cx-card"><span>Mensalidade</span><b>${K.brl(v.doc.prices.mensal)}</b><small>${v.fees.length} mensalistas</small></div>
+      </div>
+      <div class="chips" style="margin-top:12px">${[['all', 'Todos'], ['reg', 'Regulares'], ['inad', 'Inadimplentes']].map(([k, l]) => `<button class="chip ${s.filter === k ? 'on' : ''}" data-act="cx-filter" data-f="${k}">${l}</button>`).join('')}</div>
+      ${list.length ? `<div class="sheet-table">${list.map(f => `<button class="st-row cx-row" data-act="cx-fee" data-id="${esc(f.id)}">${avatar(f.p, 's')}
+        <span class="nm">${esc(dn(f.p))}<small>${f.paid ? `Pago${f.paidAt ? ' em ' + fmtD(f.paidAt) : ''}${f.method ? ' · ' + f.method : ''}${f.receiptId ? ' · 📎 comprovante' : ''}` : 'Mensalidade em aberto'}</small></span>
+        <span class="line"><b>${K.brl(f.amount)}</b>${pill(f.paid, 'Regular', 'Inadimplente')}</span></button>`).join('')}</div>` : `<div class="empty"><p>Ninguém nesta lista.</p></div>`}
+      <p class="hint" style="margin-top:10px">Mensalistas são os atletas marcados como Mensalista e no elenco. Toque em um para registrar o pagamento ou anexar o comprovante.</p>`;
+  } else if (s.tab === 'dia') {
+    body = `<div class="cx-cards">
+        <div class="cx-card ok"><span>Recebido</span><b>${K.brl(T.dayPaid)}</b><small>${v.daily.filter(d => d.paid).reduce((x, d) => x + d.count, 0)} diárias</small></div>
+        <div class="cx-card bad"><span>Pendente</span><b>${K.brl(T.dayDue)}</b><small>${v.daily.filter(d => !d.paid).length} atletas</small></div>
+        <div class="cx-card"><span>Diária</span><b>${K.brl(v.doc.prices.diaria)}</b><small>por presença</small></div>
+      </div>
+      ${v.daily.length ? `<div class="sheet-table" style="margin-top:12px">${v.daily.map(d => `<button class="st-row cx-row" data-act="cx-day" data-id="${esc(d.id)}">${avatar(d.p, 's')}
+        <span class="nm">${esc(dn(d.p))}<small>${TIPOS[tipoOf(d.p)]} · ${d.count} ${d.count === 1 ? 'presença' : 'presenças'}${d.receiptId ? ' · 📎' : ''}</small></span>
+        <span class="line"><b>${K.brl(d.amount)}</b>${pill(d.paid, 'Pago', 'Pendente')}</span></button>`).join('')}</div>` : `<div class="empty"><p>Nenhum diarista jogou neste mês.</p></div>`}
+      <p class="hint" style="margin-top:10px">As diárias saem das presenças nas rodadas do mês (${K.brl(v.doc.prices.diaria)} cada) e entram como pagas. Toque para marcar como pendente.</p>`;
+  } else {
+    const acc = K.saldoAcumulado(store.players, store.rounds, store.finance, s.y, s.m);
+    body = `<div class="cx-result ${T.resultado >= 0 ? 'ok' : 'bad'}"><span>Resultado de ${C.MONTHS[s.m - 1].toLowerCase()}</span><b>${K.brl(T.resultado)}</b>
+        <small>Entradas ${K.brl(T.entradas)} − Saídas ${K.brl(T.saidas)}</small></div>
+      <div class="cx-cards" style="margin-top:10px">
+        <div class="cx-card"><span>Saldo acumulado</span><b>${K.brl(acc)}</b><small>todos os meses até aqui</small></div>
+        <div class="cx-card bad"><span>A receber</span><b>${K.brl(T.aReceber)}</b><small>inadimplentes e pendentes</small></div>
+      </div>
+      <div class="sec-head" style="margin-top:22px"><h2>Entradas</h2><b class="cx-in">${K.brl(T.entradas)}</b></div>
+      <div class="sheet-table">
+        <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Mensalidades<small>${v.fees.filter(f => f.paid).length} de ${v.fees.length} pagas</small></span><span class="line"><b>${K.brl(T.feePaid)}</b></span></div>
+        <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Diárias<small>${v.daily.filter(d => d.paid).reduce((x, d) => x + d.count, 0)} diárias recebidas</small></span><span class="line"><b>${K.brl(T.dayPaid)}</b></span></div>
+        ${(v.doc.income || []).map(x => `<button class="st-row cx-row" data-act="cx-inc" data-id="${esc(x.id)}"><span class="cx-ico in">＋</span><span class="nm">${esc(x.desc || 'Outra receita')}<small>${fmtD(x.date)}${x.receiptId ? ' · 📎' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}
+      </div>
+      <button class="btn sm" style="margin-top:8px" data-act="cx-inc">${I.plus.replace('<svg', '<svg style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round"')}Outra receita</button>
+      <div class="sec-head" style="margin-top:22px"><h2>Saídas</h2><b class="cx-out">${K.brl(T.saidas)}</b></div>
+      ${(v.doc.expenses || []).length ? `<div class="sheet-table">${v.doc.expenses.slice().sort((x, y) => (y.date || '').localeCompare(x.date || '')).map(x => `<button class="st-row cx-row" data-act="cx-exp" data-id="${esc(x.id)}"><span class="cx-ico out">−</span>
+        <span class="nm">${esc(x.cat)}${x.desc ? ' · ' + esc(x.desc) : ''}<small>${fmtD(x.date)}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma despesa lançada.</p></div>`}
+      <div class="chips" style="margin-top:10px">${K.EXPENSE_CATS.map(c => `<button class="chip" data-act="cx-exp" data-cat="${esc(c)}">＋ ${esc(c)}</button>`).join('')}</div>
+      <button class="btn sm" style="margin-top:14px" data-act="cx-prices">Valores: mensalidade ${K.brl(v.doc.prices.mensal)} · diária ${K.brl(v.doc.prices.diaria)}</button>`;
+  }
+  return `<div class="page-head"><div><h1>Caixa</h1><p>Só a comissão vê esta área.</p></div></div>${nav}${seg}${body}`;
+}
+
+function pickFile(accept) {
+  return new Promise(res => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = accept; inp.style.display = 'none';
+    inp.onchange = () => { res(inp.files[0] || null); inp.remove(); };
+    document.body.appendChild(inp); inp.click();
+  });
+}
+async function attachReceipt() {
+  const f = await pickFile('image/*,application/pdf');
+  if (!f) return null;
+  toast('Enviando comprovante…');
+  const r = await K.readReceipt(f);
+  const id = await store.saveReceipt(r);
+  return { receiptId: id, receiptName: r.name };
+}
+async function openReceipt(id) {
+  try {
+    const r = await store.getReceipt(id);
+    if (!r) { toast('Comprovante não encontrado', true); return; }
+    if (r.type === 'pdf') {
+      const bin = atob(r.data.split(',')[1]); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([u8], { type: 'application/pdf' }));
+      window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } else {
+      openSheet(`<h2>Comprovante</h2><img src="${r.data}" alt="Comprovante" style="width:100%;border-radius:12px"><p class="hint" style="margin-top:8px">${esc(r.name || '')}${r.by ? ' · enviado por ' + esc(r.by) : ''}</p><button class="btn block" style="margin-top:10px" data-act="sheet-close">Fechar</button>`);
+    }
+  } catch (e) { toast(e.message, true); }
+}
+
+function feeSheet(id) {
+  const v = cxView(); const f = v.fees.find(x => x.id === id); if (!f) return;
+  const today = C.isoDate(now());
+  let rec = f.receiptId ? { receiptId: f.receiptId, receiptName: f.receiptName } : null;
+  const draw = s => {
+    s.querySelector('#cxRec').innerHTML = rec ? `📎 ${esc(rec.receiptName || 'comprovante')} <button class="link" data-x="view">Ver</button> · <button class="link" data-x="att">Trocar</button>` : `<button class="btn sm" data-x="att">📎 Anexar comprovante (foto ou PDF)</button>`;
+  };
+  openSheet(`<h2>${esc(dn(f.p))}</h2>
+    <p class="muted" style="margin:-6px 0 14px">Mensalidade de ${C.MONTHS[state.cx.m - 1].toLowerCase()} · ${pill(f.paid, 'Regular', 'Inadimplente')}</p>
+    <div class="field"><label for="cxVal">Valor</label><input class="input" id="cxVal" inputmode="decimal" value="${String(f.amount).replace('.', ',')}"></div>
+    <div class="field"><label for="cxDate">Data do pagamento</label><input class="input" type="date" id="cxDate" value="${f.paidAt || today}"></div>
+    <div class="field"><span class="lab">Forma</span><div class="seg" id="cxMet">${K.METHODS.map(mt => `<button type="button" class="${(f.method || 'PIX') === mt ? 'on' : ''}" data-x="met" data-v="${mt}">${mt}</button>`).join('')}</div></div>
+    <div class="field"><span class="lab">Comprovante</span><div id="cxRec"></div></div>
+    <button class="btn primary block" data-x="pay">${f.paid ? 'Salvar pagamento' : 'Registrar pagamento (Regular)'}</button>
+    ${f.paid ? '<button class="btn danger block" style="margin-top:8px" data-x="unpay">Marcar como inadimplente</button>' : ''}`, s => {
+    let method = f.method || 'PIX';
+    draw(s);
+    s.addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-x]'); if (!b) return;
+      const x = b.dataset.x;
+      if (x === 'met') { method = b.dataset.v; s.querySelectorAll('#cxMet button').forEach(e => e.classList.toggle('on', e === b)); }
+      if (x === 'view') openReceipt(rec.receiptId);
+      if (x === 'att') { try { const r = await attachReceipt(); if (r) { rec = r; draw(s); toast('Comprovante anexado'); } } catch (e) { toast(e.message, true); } }
+      if (x === 'pay' || x === 'unpay') {
+        const v2 = cxView(); v2.doc.fees = { ...(v2.doc.fees || {}) };
+        const amount = parseFloat(String(s.querySelector('#cxVal').value).replace(/\./g, '').replace(',', '.')) || v2.doc.prices.mensal;
+        v2.doc.fees[id] = x === 'pay'
+          ? { paid: true, amount, paidAt: s.querySelector('#cxDate').value || today, method, ...(rec || {}) }
+          : { paid: false, amount, ...(rec || {}) };
+        closeSheet(); await cxSave(v2, x === 'pay' ? `${dn(f.p)}: Regular` : `${dn(f.p)}: Inadimplente`);
+      }
+    });
+  });
+}
+
+function daySheet(id) {
+  const v = cxView(); const d = v.daily.find(x => x.id === id); if (!d) return;
+  openSheet(`<h2>${esc(dn(d.p))}</h2><p class="muted" style="margin:-6px 0 14px">${d.count} ${d.count === 1 ? 'diária' : 'diárias'} em ${C.MONTHS[state.cx.m - 1].toLowerCase()} · ${K.brl(d.amount)} · ${pill(d.paid, 'Pago', 'Pendente')}</p>
+    <div class="btn-row">${d.receiptId ? '<button class="btn" data-x="view">Ver comprovante</button>' : ''}<button class="btn" data-x="att">📎 ${d.receiptId ? 'Trocar' : 'Anexar'} comprovante</button></div>
+    <button class="btn ${d.paid ? 'danger' : 'primary'} block" style="margin-top:10px" data-x="toggle">${d.paid ? 'Marcar como pendente' : 'Marcar como pago'}</button>`, s => {
+    s.addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-x]'); if (!b) return;
+      const v2 = cxView(); v2.doc.daily = { ...(v2.doc.daily || {}) }; const cur = v2.doc.daily[id] || {};
+      if (b.dataset.x === 'view') return openReceipt(d.receiptId);
+      if (b.dataset.x === 'att') { try { const r = await attachReceipt(); if (!r) return; v2.doc.daily[id] = { ...cur, ...r, paid: true }; closeSheet(); await cxSave(v2, 'Comprovante anexado'); } catch (e) { toast(e.message, true); } }
+      if (b.dataset.x === 'toggle') { v2.doc.daily[id] = { ...cur, paid: !d.paid }; closeSheet(); await cxSave(v2, d.paid ? 'Diária pendente' : 'Diária paga'); }
+    });
+  });
+}
+
+function entrySheet(kind, id, cat) {
+  // kind: 'exp' (despesa) | 'inc' (outra receita)
+  const v = cxView(); const listKey = kind === 'exp' ? 'expenses' : 'income';
+  const cur = id ? (v.doc[listKey] || []).find(x => x.id === id) : null;
+  const today = C.isoDate(now());
+  let rec = cur?.receiptId ? { receiptId: cur.receiptId, receiptName: cur.receiptName } : null;
+  let c = cur?.cat || cat || K.EXPENSE_CATS[0];
+  openSheet(`<h2>${cur ? 'Editar' : 'Nova'} ${kind === 'exp' ? 'despesa' : 'receita'}</h2>
+    ${kind === 'exp' ? `<div class="field"><span class="lab">Categoria</span><div class="chips" id="exCat" style="margin:0">${K.EXPENSE_CATS.map(x => `<button type="button" class="chip ${x === c ? 'on' : ''}" data-x="cat" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>` : ''}
+    <div class="field"><label for="exDesc">Descrição ${kind === 'exp' ? '(opcional)' : ''}</label><input class="input" id="exDesc" maxlength="60" value="${esc(cur?.desc || '')}" placeholder="${kind === 'exp' ? 'Ex.: 2 goleiros' : 'Ex.: venda de camisas'}"></div>
+    <div class="field"><label for="exVal">Valor</label><input class="input" id="exVal" inputmode="decimal" placeholder="0,00" value="${cur ? String(cur.amount).replace('.', ',') : ''}"></div>
+    <div class="field"><label for="exDate">Data</label><input class="input" type="date" id="exDate" value="${cur?.date || today}"></div>
+    <div class="field"><span class="lab">Comprovante</span><div id="exRec"></div></div>
+    <button class="btn primary block" data-x="save">Salvar</button>
+    ${cur ? '<button class="btn danger block" style="margin-top:8px" data-x="del">Apagar</button>' : ''}`, s => {
+    const drawRec = () => { s.querySelector('#exRec').innerHTML = rec ? `📎 ${esc(rec.receiptName || 'comprovante')} <button class="link" data-x="view">Ver</button> · <button class="link" data-x="att">Trocar</button>` : `<button class="btn sm" data-x="att">📎 Anexar comprovante (foto ou PDF)</button>`; };
+    drawRec();
+    s.addEventListener('click', async ev => {
+      const b = ev.target.closest('[data-x]'); if (!b) return;
+      const x = b.dataset.x;
+      if (x === 'cat') { c = b.dataset.v; s.querySelectorAll('#exCat .chip').forEach(e => e.classList.toggle('on', e === b)); }
+      if (x === 'view') openReceipt(rec.receiptId);
+      if (x === 'att') { try { const r = await attachReceipt(); if (r) { rec = r; drawRec(); toast('Comprovante anexado'); } } catch (e) { toast(e.message, true); } }
+      if (x === 'save' || x === 'del') {
+        const amount = parseFloat(String(s.querySelector('#exVal').value).replace(/\./g, '').replace(',', '.'));
+        if (x === 'save' && !(amount > 0)) { toast('Coloque o valor', true); return; }
+        const v2 = cxView(); let list = [...(v2.doc[listKey] || [])];
+        if (x === 'del') list = list.filter(e => e.id !== id);
+        else {
+          const item = { id: id || ('e-' + store.newId()), desc: s.querySelector('#exDesc').value.trim(), amount, date: s.querySelector('#exDate').value || today, ...(kind === 'exp' ? { cat: c } : {}), ...(rec || {}) };
+          list = id ? list.map(e => e.id === id ? item : e) : [...list, item];
+        }
+        v2.doc[listKey] = list; closeSheet();
+        await cxSave(v2, x === 'del' ? 'Lançamento apagado' : (kind === 'exp' ? 'Despesa lançada' : 'Receita lançada'));
+      }
+    });
+  });
+}
+
+function pricesSheet() {
+  const v = cxView();
+  openSheet(`<h2>Valores de ${C.MONTHS[state.cx.m - 1].toLowerCase()}</h2>
+    <div class="field"><label for="prM">Mensalidade</label><input class="input" id="prM" inputmode="decimal" value="${String(v.doc.prices.mensal).replace('.', ',')}"></div>
+    <div class="field"><label for="prD">Diária</label><input class="input" id="prD" inputmode="decimal" value="${String(v.doc.prices.diaria).replace('.', ',')}"></div>
+    <p class="hint" style="margin-bottom:12px">Vale para este mês. Mensalidades já registradas mantêm o valor que foi pago.</p>
+    <button class="btn primary block" id="prOk">Salvar valores</button>`, s => {
+    s.querySelector('#prOk').onclick = async () => {
+      const num = el => parseFloat(String(s.querySelector(el).value).replace(/\./g, '').replace(',', '.'));
+      const v2 = cxView(); v2.doc.prices = { mensal: num('#prM') || 50, diaria: num('#prD') || 17 };
+      // diárias sem valor fixo recalculam
+      closeSheet(); await cxSave(v2, 'Valores salvos');
+    };
+  });
+}
+
 // ================= PARTIDA AO VIVO =================
 const tName = (l, i) => esc(l.teams[i]?.name || TEAM_NAMES[i]);
 const tDot = i => `<span class="dot" style="background:${TEAM_COLORS[i % 4]}"></span>`;
@@ -1039,7 +1241,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 22.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 23.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1863,6 +2065,14 @@ const actions = {
     if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e.name === 'AbortError') return; } }
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
   },
+  'cx-step': el => { let { y, m } = state.cx; m += +el.dataset.d; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; } state.cx.y = y; state.cx.m = m; render(); },
+  'cx-tab': el => { state.cx.tab = el.dataset.t; render(); },
+  'cx-filter': el => { state.cx.filter = el.dataset.f; render(); },
+  'cx-fee': el => feeSheet(el.dataset.id),
+  'cx-day': el => daySheet(el.dataset.id),
+  'cx-exp': el => entrySheet('exp', el.dataset.id, el.dataset.cat),
+  'cx-inc': el => entrySheet('inc', el.dataset.id),
+  'cx-prices': () => pricesSheet(),
   'live-start': async () => {
     const teams = state.draw.result.map((ids, i) => ({ name: TEAM_NAMES[i], ids }));
     if (teams.length < 2) { toast('Sorteie pelo menos 2 times', true); return; }

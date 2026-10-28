@@ -1,8 +1,8 @@
 // Service worker do Capelota: deixa o app abrir sem internet.
 // Os dados do banco compartilhado têm cache próprio do Firebase; aqui só guardamos a "casca" do app.
-const VERSION = 'capelota-v22';
+const VERSION = 'capelota-v23';
 const SHELL = [
-  './', './index.html', './style.css', './app.js', './store.js', './calc.js', './live.js', './firebase-config.js',
+  './', './index.html', './style.css', './app.js', './store.js', './calc.js', './live.js', './caixa.js', './firebase-config.js',
   './manifest.webmanifest', './icons/logo-256.png', './icons/logo-512.png', './icons/icon-192.png', './icons/favicon-64.png'
 ];
 

@@ -58,6 +58,7 @@ class Store {
     this.rounds = [];
     this.settings = clone(DEFAULT_SETTINGS);
     this.draw = null; // último sorteio publicado pelos masters
+    this.finance = {}; // caixa por mês: { 'AAAA-MM': {...} } (só masters)
     this.masters = []; // comissão: [{ id, playerId, name, cpfEnd, h? }] (só masters enxergam)
     this.user = null; // { name, uid? }
     this.mode = 'local';
@@ -108,6 +109,7 @@ class Store {
     this.rounds = data?.rounds || [];
     this.settings = normSettings(data?.settings);
     this.draw = data?.draw || null;
+    this.finance = data?.finance || {};
     this.masters = Array.isArray(data?.masters) ? data.masters : clone(DEFAULT_MEMBERS);
     try { const m = JSON.parse(localStorage.getItem(LS_MASTER) || 'null'); if (m?.name) this.user = { name: m.name, cpf: m.cpf || '' }; } catch (e) {}
     this.loaded = { players: true, rounds: true, settings: true };
@@ -116,7 +118,7 @@ class Store {
   _persistLocal() {
     this.usingSeed = false;
     try {
-      localStorage.setItem(LS_DATA, JSON.stringify({ players: this.players, rounds: this.rounds, settings: this.settings, draw: this.draw, masters: this.masters }));
+      localStorage.setItem(LS_DATA, JSON.stringify({ players: this.players, rounds: this.rounds, settings: this.settings, draw: this.draw, masters: this.masters, finance: this.finance }));
     } catch (e) {
       throw new Error('Sem espaço no aparelho. Use fotos menores ou ligue o banco na nuvem.');
     }
@@ -140,10 +142,15 @@ class Store {
     this.fb = { app, db, auth, authM, fsM };
     this.mode = 'cloud';
 
-    let unsubMasters = null;
+    let unsubMasters = null, unsubFin = null;
     authM.onAuthStateChanged(auth, u => {
       this.user = u ? { uid: u.uid, name: u.displayName || '', email: u.email } : null;
       if (unsubMasters) { unsubMasters(); unsubMasters = null; this.masters = []; }
+      if (unsubFin) { unsubFin(); unsubFin = null; this.finance = {}; }
+      // caixa: só masters leem
+      if (u) unsubFin = fsM.onSnapshot(fsM.collection(db, 'finance'), snap => {
+        this.finance = Object.fromEntries(snap.docs.map(d => [d.id, d.data()])); this.financeLoaded = true; this._emit();
+      }, err => console.error(err));
       // a lista da comissão só pode ser lida por masters
       if (u) unsubMasters = fsM.onSnapshot(fsM.collection(db, 'masters'), snap => {
         this.masters = snap.docs.map(d => ({ ...d.data(), id: d.id })); this._emit();
@@ -387,6 +394,34 @@ class Store {
     const data = normSettings(s);
     if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'settings', 'main'), data)); }
     this.settings = data; this._persistLocal(); this._emit(); return 'ok';
+  }
+
+  // ---------- caixa (só masters) ----------
+  async saveFinance(month, data) {
+    this._requireMaster();
+    const doc = { ...data, updatedAt: Date.now(), updatedBy: this.user?.name || '' };
+    if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'finance', month), doc)); }
+    this.finance = { ...this.finance, [month]: doc }; this._persistLocal(); this._emit(); return 'ok';
+  }
+  // Comprovantes ficam numa coleção à parte (foto ou PDF em base64, até ~900 KB)
+  async saveReceipt(rec) {
+    this._requireMaster();
+    const id = 'rc-' + this.newId();
+    const doc = { ...rec, at: Date.now(), by: this.user?.name || '' };
+    if (this.mode === 'cloud') { const { db, fsM } = this.fb; await this._cloudWrite(fsM.setDoc(fsM.doc(db, 'receipts', id), doc)); return id; }
+    const all = JSON.parse(localStorage.getItem('capelota:receipts') || '{}'); all[id] = doc;
+    try { localStorage.setItem('capelota:receipts', JSON.stringify(all)); } catch (e) { throw new Error('Sem espaço no aparelho para o comprovante.'); }
+    return id;
+  }
+  async getReceipt(id) {
+    if (!id) return null;
+    if (this.mode === 'cloud') { const { db, fsM } = this.fb; const snap = await fsM.getDoc(fsM.doc(db, 'receipts', id)); return snap.exists() ? snap.data() : null; }
+    return JSON.parse(localStorage.getItem('capelota:receipts') || '{}')[id] || null;
+  }
+  async deleteReceipt(id) {
+    if (!id) return;
+    if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.deleteDoc(fsM.doc(db, 'receipts', id))); }
+    const all = JSON.parse(localStorage.getItem('capelota:receipts') || '{}'); delete all[id]; localStorage.setItem('capelota:receipts', JSON.stringify(all));
   }
 
   // ---------- sorteio publicado ----------
