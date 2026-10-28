@@ -349,6 +349,7 @@ function vInicio() {
 
   return `${heroHTML()}
     ${periodBar('dash')}
+    ${store.isMaster && per.type === 'month' ? `<button class="btn sm block" style="margin:-6px 0 14px" data-act="edit-month" data-y="${per.y}" data-m="${per.m}">${I.edit}Editar estatísticas de ${C.MONTHS[per.m - 1].toLowerCase()}</button>` : ''}
     <div class="kpis">
       <div class="kpi"><b>${nR}</b><span>${nR === 1 ? 'Rodada' : 'Rodadas'}</span></div>
       <div class="kpi"><b>${sum('g')}</b><span>Gols</span></div>
@@ -475,6 +476,8 @@ function vRanking() {
   }).join('');
   return `<div class="page-head"><div><h1>Ranking</h1><p>${store.isMaster ? 'Toque num atleta para ver o perfil.' : 'Por rodada, mês ou ano.'}</p></div></div>
     ${periodBar('rank', store.isMaster ? ['round', 'month', 'year', 'all'] : ['round', 'month', 'year'])}
+    ${store.isMaster && per.type === 'month' ? `<button class="btn sm block" style="margin:-6px 0 14px" data-act="edit-month" data-y="${per.y}" data-m="${per.m}">${I.edit}Editar estatísticas de ${C.MONTHS[per.m - 1].toLowerCase()}</button>` : ''}
+    ${store.isMaster && per.type === 'round' && per.date ? `<a class="btn sm block" style="margin:-6px 0 14px" href="#/lancar/${per.date}">${I.edit}Editar esta rodada</a>` : ''}
     <div class="seg" style="margin-bottom:12px">
       <button class="${g === 'L' ? 'on' : ''}" data-act="rank-group" data-g="L">Linha</button>
       <button class="${g === 'G' ? 'on' : ''}" data-act="rank-group" data-g="G">Goleiros</button>
@@ -814,7 +817,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 8.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 9.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -887,7 +890,14 @@ function vLancar(date) {
   if (!store.isMaster) {
     return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Só masters lançam rodadas</h3><p>Entre com CPF e senha de master para continuar.</p><button class="btn primary" data-act="login">Entrar como master</button></div>`;
   }
-  const sumRound = date ? store.rounds.find(r => r.id === date && r.summary) : null;
+  let sumRound = date ? store.rounds.find(r => r.id === date && r.summary) : null;
+  // resumo novo para um mês sem dados (ex.: #/lancar/resumo-2026-03)
+  const mNew = !sumRound && date && /^resumo-(\d{4})-(\d{2})$/.exec(date);
+  if (mNew) {
+    const yy = +mNew[1], mm = +mNew[2];
+    let tues = 0; for (let d = 1; d <= new Date(yy, mm, 0).getDate(); d++) if (new Date(yy, mm - 1, d).getDay() === 2) tues++;
+    sumRound = { id: date, date: `${mNew[1]}-${mNew[2]}-01`, summary: true, rounds: tues, entries: {}, note: '' };
+  }
   if (sumRound) {
     if (!state.editor || state.editor.origId !== sumRound.id) {
       state.editor = { summary: true, origId: sumRound.id, date: sumRound.date, rounds: sumRound.rounds || 1, entries: JSON.parse(JSON.stringify(sumRound.entries || {})), teams: null, note: sumRound.note || '' };
@@ -990,6 +1000,22 @@ function passwordSheet(title, action) {
       });
     });
   });
+}
+
+// Master: escolher o que editar num mês (rodadas lançadas e/ou resumo)
+function editMonthSheet(y, m) {
+  const key = `${y}-${String(m).padStart(2, '0')}`;
+  const rs = C.sortedRounds(store.rounds.filter(r => r.date.startsWith(key))).reverse();
+  const sum = rs.find(r => r.summary);
+  const item = (href, title, sub) => `<a class="rd" href="${href}" data-act="sheet-close-go"><span class="day"><b style="font-size:20px">${title}</b></span><span class="info">${sub}</span><span class="ico" style="color:var(--texto-3)">${I.edit}</span></a>`;
+  openSheet(`<h2>Editar ${C.MONTHS[m - 1].toLowerCase()} de ${y}</h2>
+    <p class="muted" style="margin-bottom:14px">Escolha o que corrigir. As estatísticas, o ranking e os prêmios do mês se atualizam na hora.</p>
+    <div class="rounds">
+      ${rs.filter(r => !r.summary).map(r => item(`#/lancar/${r.id}`, C.fmtDate(r.date, { year: false }), `Rodada: ${Object.values(r.entries || {}).filter(e => e.p).length} presentes`)).join('')}
+      ${sum ? item(`#/lancar/${sum.id}`, C.MONTHS_SHORT[m - 1], `Resumo do mês: ${sum.rounds} rodadas, ${Object.keys(sum.entries || {}).length} atletas`) : ''}
+      ${!sum ? item(`#/lancar/resumo-${key}`, C.MONTHS_SHORT[m - 1], rs.length ? 'Criar resumo do mês (para somar números que não estão nas rodadas)' : 'Criar resumo do mês com os números de cada atleta') : ''}
+      ${item('#/lancar', '+', 'Lançar uma rodada nova')}
+    </div>`);
 }
 
 function loginSheet() {
@@ -1489,6 +1515,8 @@ const actions = {
       const r = await store.importAll(data); toast(`Dados da planilha carregados: ${r.players} atletas`);
     } catch (e) { toast(e.message, true); }
   },
+  'edit-month': el => editMonthSheet(+el.dataset.y, +el.dataset.m),
+  'sheet-close-go': el => { closeSheet(); location.hash = el.getAttribute('href'); },
   'aw-step': el => {
     let { y, m } = state.awards; m += +el.dataset.d;
     if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
