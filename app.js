@@ -117,8 +117,36 @@ function route() {
   return { name: name || 'inicio', arg: rest.join('/') ? decodeURIComponent(rest.join('/')) : null };
 }
 
+// Torcedor (sem login): só times sorteados, ranking e craque/time ideal. Masters veem tudo.
+const PUBLIC_ROUTES = ['sorteio', 'ranking', 'premios', 'ajustes'];
+const TABS_MASTER = [['inicio', 'Início', 'home'], ['ranking', 'Ranking', 'rank'], ['atletas', 'Atletas', 'cards'], ['sorteio', 'Sorteio', 'shuffle'], ['premios', 'Prêmios', 'trophy']];
+const TABS_PUBLIC = [['sorteio', 'Times', 'shirt'], ['ranking', 'Ranking', 'rank'], ['premios', 'Craque do mês', 'trophy']];
+const TAB_ICONS = {
+  home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  rank: '<path d="M4 21V11M10 21V4M16 21v-7M22 21H2"/>',
+  cards: '<rect x="4" y="3" width="11" height="15" rx="1.5"/><path d="M9 21h10a1 1 0 0 0 1-1V7"/><circle cx="9.5" cy="9" r="2.3"/><path d="M6.5 15c.6-1.8 1.7-2.6 3-2.6s2.4.8 3 2.6"/>',
+  shuffle: '<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>',
+  trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
+  shirt: '<path d="M8 3 3 6l2 5 3-1v11h8V10l3 1 2-5-5-3c-.5 1.7-2 3-4 3s-3.5-1.3-4-3Z"/>'
+};
+let tabsFor = null;
+function drawTabs() {
+  const M = store.isMaster;
+  if (tabsFor === M) return;
+  tabsFor = M;
+  const tabs = M ? TABS_MASTER : TABS_PUBLIC;
+  const nav = $('.tabbar');
+  nav.style.gridTemplateColumns = `repeat(${tabs.length}, 1fr)`;
+  nav.innerHTML = tabs.map(([k, l, ic]) => `<a href="#/${k}" data-tab="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${TAB_ICONS[ic]}</svg><span>${l}</span></a>`).join('');
+  $('.brand').setAttribute('href', M ? '#/inicio' : '#/sorteio');
+}
+
 function render() {
-  const r = route();
+  let r = route();
+  drawTabs();
+  if (!store.isMaster && !PUBLIC_ROUTES.includes(r.name)) {
+    history.replaceState(null, '', '#/sorteio'); r = route();
+  }
   const tab = { inicio: 'inicio', rodada: 'inicio', lancar: 'inicio', ranking: 'ranking', atletas: 'atletas', atleta: 'atletas', sorteio: 'sorteio', premios: 'premios' }[r.name];
   $$('.tabbar a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   const chip = $('#masterChip');
@@ -422,6 +450,7 @@ function vRodada(id) {
 // ================= RANKING =================
 function vRanking() {
   const per = state.pers.rank;
+  if (!store.isMaster && per.type === 'all') setPerType('rank', 'month');
   if (per.type === 'round' && !per.date) per.date = roundDates()[0] || null;
   const { totals: T } = C.aggregate(store.rounds, store.players, per, store.settings);
   const g = state.rankGroup;
@@ -438,13 +467,14 @@ function vRanking() {
     const pos = v === lastV ? lastPos : i + 1; lastV = v; lastPos = pos;
     const t = T[p.id];
     const sub = g === 'G' ? `${t.p} presenças, ${t.pts} pts` : (k === 'pts' ? `${t.g} gols, ${t.a} assist., ${t.p} pres.` : `${t.p} presenças, ${t.pts} pts`);
-    return `<a class="row ${pos <= 3 ? 'top' + pos : ''}" href="#/atleta/${esc(p.id)}">
+    const tag = store.isMaster ? `a href="#/atleta/${esc(p.id)}"` : 'div';
+    return `<${tag} class="row ${pos <= 3 ? 'top' + pos : ''}">
       <span class="pos">${pos}</span>${avatar(p)}
       <span><span class="nm">${esc(dn(p))}</span><br><span class="sub">${sub}</span></span>
-      <span class="v" style="${k === 'cards' ? 'font-size:18px' : ''}">${statShow(t, k)}</span></a>`;
+      <span class="v" style="${k === 'cards' ? 'font-size:18px' : ''}">${statShow(t, k)}</span></${store.isMaster ? 'a' : 'div'}>`;
   }).join('');
-  return `<div class="page-head"><div><h1>Ranking</h1><p>Toque num atleta para ver o perfil.</p></div></div>
-    ${periodBar('rank')}
+  return `<div class="page-head"><div><h1>Ranking</h1><p>${store.isMaster ? 'Toque num atleta para ver o perfil.' : 'Por rodada, mês ou ano.'}</p></div></div>
+    ${periodBar('rank', store.isMaster ? ['round', 'month', 'year', 'all'] : ['round', 'month', 'year'])}
     <div class="seg" style="margin-bottom:12px">
       <button class="${g === 'L' ? 'on' : ''}" data-act="rank-group" data-g="L">Linha</button>
       <button class="${g === 'G' ? 'on' : ''}" data-act="rank-group" data-g="G">Goleiros</button>
@@ -562,7 +592,26 @@ function vAtleta(id) {
 }
 
 // ================= SORTEIO =================
+function publishedTeams(compact) {
+  const pub = store.draw;
+  if (!pub || !pub.teams?.length) return '';
+  const when = pub.date ? C.fmtDate(pub.date, { year: false }) : '';
+  return `<div class="teams">${pub.teams.map((t, i) => `
+      <div class="team"><div class="team-h"><span class="dot" style="background:${TEAM_COLORS[i % 4]}"></span><h3>${esc(t.name || TEAM_NAMES[i])}</h3><span class="str">${t.ids.length} atletas</span></div>
+        <ul>${t.ids.map(id => { const p = playerById(id); return `<li>${avatar(p, 's')}${esc(dn(p))}${p?.pos === 'G' ? '<span class="gk">GOL</span>' : ''}</li>`; }).join('')}</ul></div>`).join('')}</div>
+    ${compact ? '' : `<p class="hint" style="margin-top:10px">Sorteio de ${when}${pub.by ? `, publicado por ${esc(pub.by)}` : ''}.</p>`}`;
+}
+
+function vTimesPublic() {
+  const pub = store.draw;
+  const when = pub?.date ? C.parseDate(pub.date) : null;
+  return heroHTML() + `<div class="page-head"><div><h1>Times</h1><p>${pub ? `Sorteio para ${['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][when.getDay()]}, ${C.fmtDate(pub.date, { year: false })}. Ache seu nome e veja seu time.` : 'Os times aparecem aqui assim que a comissão fizer o sorteio.'}</p></div></div>
+    ${pub ? `<input class="search" type="search" placeholder="Ache seu nome" data-input="team-search" aria-label="Ache seu nome" style="margin-bottom:12px">` : ''}
+    <div id="pubTeams">${pub ? publishedTeams() : `<div class="empty"><img src="icons/logo-256.png" alt=""><h3>Sorteio ainda não saiu</h3><p>Volte mais perto das 19h de terça.</p></div>`}</div>`;
+}
+
 function vSorteio() {
+  if (!store.isMaster) return vTimesPublic();
   const d = state.draw;
   const active = store.players.filter(p => p.active !== false).sort((a, b) => (a.pos === 'G' ? -1 : 0) - (b.pos === 'G' ? -1 : 0) || dn(a).localeCompare(dn(b)));
   [...d.sel].forEach(id => { if (!active.some(p => p.id === id)) d.sel.delete(id); });
@@ -584,11 +633,14 @@ function vSorteio() {
         <button class="btn" data-act="draw-share">${I.whats}Mandar no grupo</button>
         <button class="btn" data-act="draw-go">${I.shuffle}Sortear de novo</button>
       </div>
-      ${store.isMaster ? `<button class="btn primary block" style="margin-top:10px" data-act="draw-to-round">Lançar rodada com esses times</button>` : ''}
+      <button class="btn primary block" style="margin-top:10px" data-act="draw-publish">Publicar para a galera</button>
+      <button class="btn block" style="margin-top:10px" data-act="draw-to-round">Lançar rodada com esses times</button>
     </section>`;
   }
 
-  return `<div class="page-head"><div><h1>Sorteio</h1><p>Marque quem chegou e escolha quantos times.</p></div></div>
+  const pubBlock = store.draw?.teams?.length ? `<details class="panel" style="margin-bottom:18px"><summary style="cursor:pointer;font-weight:700">Times publicados para a galera (${C.fmtDate(store.draw.date, { year: false })})</summary><div style="margin-top:12px">${publishedTeams()}</div></details>` : '';
+  return `<div class="page-head"><div><h1>Sorteio</h1><p>Marque quem chegou e escolha quantos times. Depois publique para a galera ver.</p></div></div>
+    ${pubBlock}
     <div class="sec-head"><h3>Quem vai jogar</h3><span class="muted small"><b class="num" style="font-size:20px;color:var(--texto)">${sel.length}</b> marcados</span></div>
     <div class="chips" style="margin-bottom:10px">
       <button class="chip" data-act="draw-all">Marcar todos</button>
@@ -642,16 +694,17 @@ function vPremios() {
       <button aria-label="Mês anterior" data-act="aw-step" data-d="-1">${I.prev}</button>
       <div class="lbl">${C.MONTHS[m - 1]} ${y}</div>
       <button aria-label="Próximo mês" data-act="aw-step" data-d="1" ${nextOff ? 'disabled' : ''}>${I.next}</button></div>`;
-  const head = `<div class="page-head"><div><h1>Prêmios do mês</h1><p>Calculados sozinhos a partir das rodadas.${isCur ? ' O mês ainda está rolando.' : ''}</p></div></div>`;
-  if (!A.rounds.length) return head + nav + `<div class="empty"><img src="icons/logo-256.png" alt=""><h3>Sem rodadas em ${C.MONTHS[m - 1].toLowerCase()}</h3><p>Os prêmios aparecem assim que a primeira rodada do mês for lançada.</p></div>` + yearList(y);
+  const head = `<div class="page-head"><div><h1>${store.isMaster ? 'Prêmios do mês' : 'Craque do mês'}</h1><p>Calculados sozinhos a partir das rodadas.${isCur ? ' O mês ainda está rolando.' : ''}</p></div></div>`;
+  if (!A.rounds.length) return head + nav + `<div class="empty"><img src="icons/logo-256.png" alt=""><h3>Sem rodadas em ${C.MONTHS[m - 1].toLowerCase()}</h3><p>Os prêmios aparecem assim que a primeira rodada do mês for lançada.</p></div>` + (store.isMaster ? yearList(y) : '');
 
   const mvp = A.mvp; const tm = T[mvp.id];
-  const craque = `<a class="craque" href="#/atleta/${esc(mvp.id)}">
+  const M = store.isMaster;
+  const craque = `<${M ? `a href="#/atleta/${esc(mvp.id)}"` : 'div'} class="craque">
       ${figurinha(mvp, { link: false })}
       <div><div class="k">Craque do mês</div><h2>${esc(dn(mvp))}</h2>
         <div class="pts">${tm.pts}<small> pts</small></div>
         <div class="line">${mvp.pos === 'G' ? `<span class="pill">${tm.cs} sem sofrer</span>` : `<span class="pill">${tm.g} gols</span><span class="pill">${tm.a} assist.</span>`}<span class="pill">${tm.p}/${A.nRounds} presenças</span></div>
-      </div></a>`;
+      </div></${M ? 'a' : 'div'}>`;
   const val = (list, k) => list.length ? T[list[0].id][k] : 0;
   const hls = `<div class="highlights sec">
     ${hlCard('Artilheiro do mês', I.ball, A.artilheiro, val(A.artilheiro, 'g'), 'gols')}
@@ -665,12 +718,17 @@ function vPremios() {
   const rows = FORMATION[line.length] || [line.length];
   let k = 0;
   const bdg = monthBadges(A);
-  const spot = (p, gk) => `<a class="spot ${gk ? 'gk' : ''}" href="#/atleta/${esc(p.id)}"><span class="spot-av">${avatar(p)}${(bdg[p.id] || []).map((k, i) => `<span class="award a${i}" title="${AWARD_LABEL[k]}">${AWARD_SVG[k]}</span>`).join('')}</span><span class="nm">${esc(dn(p))}</span><span class="pt">${T[p.id].pts} pts</span></a>`;
+  const spot = (p, gk) => `<${M ? `a href="#/atleta/${esc(p.id)}"` : 'span'} class="spot ${gk ? 'gk' : ''}"><span class="spot-av">${avatar(p)}${(bdg[p.id] || []).map((k, i) => `<span class="award a${i}" title="${AWARD_LABEL[k]}">${AWARD_SVG[k]}</span>`).join('')}</span><span class="nm">${esc(dn(p))}</span><span class="pt">${T[p.id].pts} pts</span></${M ? 'a' : 'span'}>`;
   const pitch = `<div class="pitch" role="img" aria-label="Time ideal do mês">
     ${rows.map(n => `<div class="line">${line.slice(k, k += n).map(p => spot(p)).join('')}</div>`).join('')}
     ${A.time.gk ? `<div class="line">${spot(A.time.gk, true)}</div>` : ''}
   </div>`;
 
+  if (!M) {
+    return head + nav + craque + `
+    <section class="sec"><div class="sec-head"><h2>Time ideal</h2><span class="muted small">Os ${line.length} de linha${A.time.gk ? ' e o goleiro' : ''} com mais pontos</span></div>${pitch}
+      <p class="legend-awards"><span>${AWARD_SVG.crown}Craque</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span></p></section>`;
+  }
   return head + nav + craque + hls + `
     <section class="sec"><div class="sec-head"><h2>Time ideal</h2><span class="muted small">Os ${line.length} de linha${A.time.gk ? ' e o goleiro' : ''} com mais pontos</span></div>${pitch}
       <p class="legend-awards"><span>${AWARD_SVG.crown}Craque</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span></p></section>
@@ -697,6 +755,18 @@ function vAjustes() {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const sc = store.settings.scoring || 'capelota';
   const wf = (k, l) => `<label>${l}<input type="number" inputmode="numeric" step="1" data-w="${k}" value="${w[k]}" ${M ? '' : 'disabled'}></label>`;
+  const install = standalone ? '' : `<div class="panel"><h3>Colocar na tela inicial</h3>
+      ${state.installPrompt ? `<p>Instale o Capelota como app, com ícone próprio.</p><button class="btn primary" data-act="install">Instalar app</button>`
+        : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
+        : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
+    </div>`;
+  if (!M) {
+    return `<div class="page-head"><div><h1>Ajustes</h1></div></div>
+    <div class="panel"><h3>Acesso da comissão</h3><p>Quem é da comissão entra com CPF e senha para lançar rodadas, sortear times e cuidar dos atletas.</p>
+      <button class="btn primary" data-act="login">Entrar como master</button></div>
+    ${install}
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h.</p>`;
+  }
   return `<div class="page-head"><div><h1>Ajustes</h1></div></div>
     <div class="panel"><h3>Acesso master</h3>
       ${M ? `<p>Você está como master${store.user?.name ? `: <b style="color:var(--texto)">${esc(store.user.name)}</b>` : ''}. Pode cadastrar atletas, lançar, editar e apagar rodadas.</p>
@@ -740,7 +810,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 5.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 6.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1337,6 +1407,12 @@ const actions = {
     if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e.name === 'AbortError') return; } }
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
   },
+  'draw-publish': async el => {
+    const teams = state.draw.result.map((ids, i) => ({ name: TEAM_NAMES[i], ids }));
+    const n = now(); const date = C.isoDate(n.getDay() === 2 ? n : C.nextGame(n));
+    el.disabled = true;
+    try { await store.saveDraw({ date, teams }); toast('Times publicados para a galera'); } catch (e) { toast(e.message, true); el.disabled = false; }
+  },
   'draw-to-round': () => {
     const teams = state.draw.result.map((ids, i) => ({ name: TEAM_NAMES[i], ids }));
     state.editor = newEditor(defaultRoundDate(), teams);
@@ -1454,6 +1530,14 @@ document.addEventListener('input', ev => {
     $('#albumBody').innerHTML = albumBody(list.filter(p => p.active !== false), list.filter(p => p.active === false), p => figurinha(p, { totals: T[p.id] || C.zero() }));
   }
   if (k === 'ed-note' && state.editor) state.editor.note = ev.target.value;
+  if (k === 'team-search') {
+    const q = ev.target.value.trim().toLowerCase();
+    $$('#pubTeams .team').forEach(t => {
+      let hit = false;
+      $$('li', t).forEach(li => { const m = q && li.textContent.toLowerCase().includes(q); li.classList.toggle('hit', !!m); hit = hit || m; });
+      t.classList.toggle('dim', !!q && !hit);
+    });
+  }
 });
 document.addEventListener('change', ev => {
   if (ev.target.dataset?.input === 'ed-date' && state.editor) {

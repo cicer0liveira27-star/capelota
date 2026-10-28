@@ -42,6 +42,7 @@ class Store {
     this.players = [];
     this.rounds = [];
     this.settings = clone(DEFAULT_SETTINGS);
+    this.draw = null; // último sorteio publicado pelos masters
     this.user = null; // { name, uid? }
     this.mode = 'local';
     this.loaded = { players: false, rounds: false, settings: false };
@@ -80,6 +81,7 @@ class Store {
     this.players = data?.players || [];
     this.rounds = data?.rounds || [];
     this.settings = normSettings(data?.settings);
+    this.draw = data?.draw || null;
     try { const m = JSON.parse(localStorage.getItem(LS_MASTER) || 'null'); if (m?.name) this.user = { name: m.name }; } catch (e) {}
     this.loaded = { players: true, rounds: true, settings: true };
     this._emit();
@@ -87,7 +89,7 @@ class Store {
   _persistLocal() {
     this.usingSeed = false;
     try {
-      localStorage.setItem(LS_DATA, JSON.stringify({ players: this.players, rounds: this.rounds, settings: this.settings }));
+      localStorage.setItem(LS_DATA, JSON.stringify({ players: this.players, rounds: this.rounds, settings: this.settings, draw: this.draw }));
     } catch (e) {
       throw new Error('Sem espaço no aparelho. Use fotos menores ou ligue o banco na nuvem.');
     }
@@ -123,6 +125,9 @@ class Store {
       this.rounds = snap.docs.map(d => ({ ...d.data(), id: d.id }));
       this.loaded.rounds = true; this._emit();
     }, err => { console.error(err); this.loaded.rounds = true; this._emit(); });
+    fsM.onSnapshot(fsM.doc(db, 'settings', 'draw'), snap => {
+      this.draw = snap.exists() ? snap.data() : null; this._emit();
+    }, err => console.error(err));
     fsM.onSnapshot(fsM.doc(db, 'settings', 'main'), snap => {
       this.settings = normSettings(snap.exists() ? snap.data() : null);
       this.loaded.settings = true; this._emit();
@@ -224,6 +229,14 @@ class Store {
     const data = normSettings(s);
     if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'settings', 'main'), data)); }
     this.settings = data; this._persistLocal(); this._emit(); return 'ok';
+  }
+
+  // ---------- sorteio publicado ----------
+  async saveDraw(d) {
+    this._requireMaster();
+    const data = { ...d, at: Date.now(), by: this.user?.name || '' };
+    if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'settings', 'draw'), data)); }
+    this.draw = data; this._persistLocal(); this._emit(); return 'ok';
   }
 
   // ---------- backup ----------
