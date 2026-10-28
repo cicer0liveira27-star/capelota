@@ -570,3 +570,5 @@ details.panel summary::-webkit-details-marker { color: var(--texto-3); }
 .master-box { border: 1px dashed var(--risca); border-radius: 14px; padding: 12px 14px; margin: 4px 0 16px; }
 .master-box.on { border-style: solid; border-color: color-mix(in srgb, var(--sombrero) 55%, var(--risca)); background: color-mix(in srgb, var(--sombrero) 8%, transparent); }
 .switch[disabled] { opacity: .5; }
+
+.pe.focus { box-shadow: 0 0 0 3px var(--amarelo); }

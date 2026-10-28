@@ -161,6 +161,15 @@ function render() {
   const views = { inicio: vInicio, ranking: vRanking, atletas: vAtletas, atleta: vAtleta, sorteio: vSorteio, premios: vPremios, ajustes: vAjustes, rodada: vRodada, lancar: vLancar };
   const fn = views[r.name] || vInicio;
   view.innerHTML = fn(r.arg);
+  if (r.name === 'lancar' && state.focusPid) {
+    const pid = state.focusPid; state.focusPid = null;
+    setTimeout(() => {
+      // se o atleta ainda não está no mês, já marca presença para editar
+      if (state.editor && !state.editor.entries[pid]?.p) { const e = edEntry(pid); e.p = 1; refreshPlayer(pid); }
+      const el = document.getElementById('pe-' + pid);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('focus'); }
+    }, 60);
+  }
 }
 
 let lastRoute = '';
@@ -575,8 +584,9 @@ function vAtleta(id) {
       </div>
     </div>
     <div class="btn-row sec" style="margin-top:22px">
-      <button class="btn" data-act="share-player" data-id="${esc(p.id)}">${I.share}Compartilhar figurinha</button>
-      ${store.isMaster ? `<button class="btn" data-act="player-edit" data-id="${esc(p.id)}">${I.edit}Editar</button>` : ''}
+      <button class="btn primary" style="flex-basis:100%" data-act="player-stats" data-id="${esc(p.id)}">${I.edit}Editar estatísticas</button>
+      <button class="btn" data-act="player-edit" data-id="${esc(p.id)}">${I.edit}Editar perfil</button>
+      <button class="btn" data-act="share-player" data-id="${esc(p.id)}">${I.share}Compartilhar</button>
     </div>
     <section class="sec">${periodBar('prof', ['month', 'year', 'all'])}
       <div class="stats">${tiles.map(([k, l, hot]) => `<div class="stat ${hot ? 'hot' : ''}"><b>${statShow(t, k)}</b><span>${l}</span></div>`).join('')}</div>
@@ -817,7 +827,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 9.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 10.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1000,6 +1010,27 @@ function passwordSheet(title, action) {
       });
     });
   });
+}
+
+// Master: escolher o mês para corrigir os números de um atleta
+function playerStatsSheet(pid) {
+  const p = playerById(pid); if (!p) return;
+  const per = state.pers.prof;
+  const y = per.type === 'all' ? thisY() : per.y;
+  const lastM = y < thisY() ? 12 : y > thisY() ? 0 : thisM();
+  const months = [];
+  for (let m = lastM; m >= 1; m--) {
+    const key = `${y}-${String(m).padStart(2, '0')}`;
+    const rs = store.rounds.filter(r => r.date.startsWith(key));
+    const e = C.aggregate(store.rounds, store.players, { type: 'month', y, m }, store.settings).totals[pid];
+    months.push({ m, key, has: rs.length > 0, e });
+  }
+  openSheet(`<h2>Números de ${esc(dn(p))}</h2>
+    <p class="muted" style="margin-bottom:14px">Escolha o mês de ${y} para corrigir. Você também pode mudar o ano no perfil.</p>
+    <div class="rounds">${months.map(({ m, has, e }) => `<button class="rd" style="width:100%;text-align:left;color:inherit" data-act="player-month" data-pid="${esc(pid)}" data-y="${y}" data-m="${m}">
+      <span class="day"><b style="font-size:20px">${C.MONTHS_SHORT[m - 1]}</b></span>
+      <span class="info">${e ? `<strong>${e.p} pres., ${e.g} gols, ${e.a} assist.</strong><br>${e.w}V ${e.d}E ${e.l}D, ${e.t} títulos` : has ? 'Não jogou neste mês' : 'Sem dados neste mês'}</span>
+      <span class="ico" style="color:var(--texto-3)">${I.edit}</span></button>`).join('') || '<p class="hint">Nenhum mês nesse ano ainda.</p>'}</div>`);
 }
 
 // Master: escolher o que editar num mês (rodadas lançadas e/ou resumo)
@@ -1516,6 +1547,17 @@ const actions = {
     } catch (e) { toast(e.message, true); }
   },
   'edit-month': el => editMonthSheet(+el.dataset.y, +el.dataset.m),
+  'player-stats': el => playerStatsSheet(el.dataset.id),
+  'player-month': el => {
+    const y = +el.dataset.y, m = +el.dataset.m, key = `${y}-${String(m).padStart(2, '0')}`;
+    const rs = store.rounds.filter(r => r.date.startsWith(key));
+    const sum = rs.find(r => r.summary);
+    closeSheet();
+    state.focusPid = el.dataset.pid;
+    if (sum || !rs.length) { location.hash = `#/lancar/resumo-${key}`; return; }
+    if (rs.length === 1) { location.hash = `#/lancar/${rs[0].id}`; return; }
+    editMonthSheet(y, m);
+  },
   'sheet-close-go': el => { closeSheet(); location.hash = el.getAttribute('href'); },
   'aw-step': el => {
     let { y, m } = state.awards; m += +el.dataset.d;
