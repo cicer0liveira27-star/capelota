@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS = {
 const LOCAL_MASTERS = [
   { h: '9919eab5c385c3519d2ab89589228b53289fbfa5b90b84ba22b9a01aae07cfa0', name: 'Cícero', playerId: 'pl-cicero', founder: true }
 ];
+// Senha geral da comissão (só o hash; usada no primeiro acesso dos membros aprovados)
+const GENERAL_PASS_H = 'df1e9f4eb05ca46e0b98c40fc21dbe260af9b9b6e6736d63928ca3d2a695f432';
 // Comissão inicial (pode ser removida pelo app como qualquer membro)
 const DEFAULT_MEMBERS = [
   { id: 'm-alyson', h: 'd07b0a51fe7deba48f9efbfd964b01f298dd22c612b25c2824974c4263013699', name: 'Alyson', playerId: 'pl-alyson', cpfEnd: '42447', addedBy: 'Cícero' }
@@ -208,6 +210,24 @@ class Store {
             this.user = { ...this.user, name: m.name }; this._emit();
             return;
           } catch (e2) { throw this._fbError(String(e2?.code || '').includes('email-already-in-use') ? e : e2); }
+        }
+        // Primeiro acesso de um membro já aprovado pela comissão (lista "masters"), com a senha geral
+        if ((code.includes('invalid-credential') || code.includes('user-not-found')) && (await pbkdf2('geral|' + pass)) === GENERAL_PASS_H) {
+          let cred = null;
+          try { cred = await authM.createUserWithEmailAndPassword(auth, d + EMAIL_DOMAIN, pass); }
+          catch (e2) { throw this._fbError(String(e2?.code || '').includes('email-already-in-use') ? e : e2); }
+          const { fsM, db } = this.fb;
+          let snap = null;
+          try { snap = await fsM.getDoc(fsM.doc(db, 'masters', d + EMAIL_DOMAIN)); } catch (e3) { snap = null; }
+          if (snap && snap.exists()) {
+            const nm = snap.data().name || '';
+            await authM.updateProfile(cred.user, { displayName: nm }).catch(() => {});
+            this.user = { ...this.user, name: nm }; this._emit();
+            return;
+          }
+          // não está na comissão: desfaz a conta criada
+          await cred.user.delete().catch(() => authM.signOut(auth));
+          throw new Error('CPF ou senha incorretos.');
         }
         throw this._fbError(e);
       }
