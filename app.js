@@ -1,5 +1,6 @@
 import { store, onlyDigits, validCpf, maskCpfEnd } from './store.js';
 import * as C from './calc.js';
+import * as L from './live.js';
 
 // ================= utilidades =================
 const $ = (s, el = document) => el.querySelector(s);
@@ -152,7 +153,7 @@ function render() {
   if (!store.isMaster && !PUBLIC_ROUTES.includes(r.name)) {
     history.replaceState(null, '', '#/sorteio'); r = route();
   }
-  const tab = { inicio: 'inicio', rodada: 'inicio', lancar: 'inicio', ranking: 'ranking', atletas: 'atletas', atleta: 'atletas', sorteio: 'sorteio', premios: 'premios' }[r.name];
+  const tab = { partida: 'sorteio', inicio: 'inicio', rodada: 'inicio', lancar: 'inicio', ranking: 'ranking', atletas: 'atletas', atleta: 'atletas', sorteio: 'sorteio', premios: 'premios' }[r.name];
   $$('.tabbar a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   const chip = $('#masterChip');
   chip.hidden = !store.isMaster;
@@ -163,7 +164,7 @@ function render() {
     return;
   }
   view.classList.remove('has-savebar');
-  const views = { inicio: vInicio, ranking: vRanking, atletas: vAtletas, atleta: vAtleta, sorteio: vSorteio, premios: vPremios, ajustes: vAjustes, rodada: vRodada, lancar: vLancar };
+  const views = { inicio: vInicio, ranking: vRanking, atletas: vAtletas, atleta: vAtleta, sorteio: vSorteio, premios: vPremios, ajustes: vAjustes, rodada: vRodada, lancar: vLancar, partida: vPartida };
   const fn = views[r.name] || vInicio;
   view.innerHTML = fn(r.arg);
 }
@@ -298,7 +299,7 @@ function vInicio() {
   const { totals: T, rounds, nRounds: nR } = C.aggregate(store.rounds, store.players, per, store.settings);
   const sum = k => Object.values(T).reduce((s, t) => s + t[k], 0);
   const presAvg = nR ? Math.round(sum('p') / nR) : 0;
-  const fab = store.isMaster ? `<a class="fab" href="#/lancar">${I.plus}Lançar rodada</a>` : '';
+  const fab = !store.isMaster ? '' : L.loadLive() ? `<a class="fab" href="#/partida" style="background:var(--faixa)">⚽ Voltar à partida</a>` : `<a class="fab" href="#/lancar">${I.plus}Lançar rodada</a>`;
 
   if (!store.players.length && !store.rounds.length) {
     return heroHTML() + `<div class="empty"><img src="icons/logo-256.png" alt=""><h3>Bem-vindo à Capelota</h3>
@@ -648,13 +649,15 @@ function vSorteio() {
         <button class="btn" data-act="draw-go">${I.shuffle}Sortear de novo</button>
       </div>
       <button class="btn primary block" style="margin-top:10px" data-act="draw-publish">Publicar para a galera</button>
+      <button class="btn primary block" style="margin-top:10px;background:var(--faixa);border-color:var(--faixa)" data-act="live-start">⚽ Iniciar a noite com esses times</button>
       <button class="btn block" style="margin-top:10px" data-act="draw-to-round">Lançar rodada com esses times</button>
     </section>`;
   }
 
+  const liveBanner = L.loadLive() ? `<a class="live-banner" href="#/partida"><i></i><span><b>Noite em andamento</b><br>Toque para voltar à partida</span></a>` : '';
   const pubBlock = store.draw?.teams?.length ? `<details class="panel" style="margin-bottom:18px"><summary style="cursor:pointer;font-weight:700">Times publicados para a galera (${C.fmtDate(store.draw.date, { year: false })})</summary><div style="margin-top:12px">${publishedTeams()}</div></details>` : '';
   return `<div class="page-head"><div><h1>Sorteio</h1><p>Marque quem chegou e escolha quantos times. Depois publique para a galera ver.</p></div></div>
-    ${pubBlock}
+    ${liveBanner}${pubBlock}
     <div class="sec-head"><h3>Quem vai jogar</h3><span class="muted small"><b class="num" style="font-size:20px;color:var(--texto)">${sel.length}</b> marcados</span></div>
     <div class="chips" style="margin-bottom:10px">
       <button class="chip" data-act="draw-all">Marcar todos</button>
@@ -679,6 +682,207 @@ function vSorteio() {
       <button class="btn primary block" data-act="draw-go" ${sel.length < d.n ? 'disabled' : ''}>${I.shuffle}Sortear times</button>
     </section>
     ${result}`;
+}
+
+// ================= PARTIDA AO VIVO =================
+const tName = (l, i) => esc(l.teams[i]?.name || TEAM_NAMES[i]);
+const tDot = i => `<span class="dot" style="background:${TEAM_COLORS[i % 4]}"></span>`;
+let liveTimer = null;
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && !wakeLock && navigator.wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener?.('release', () => { wakeLock = null; }); }
+    if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) {}
+}
+
+function vPartida() {
+  if (!store.isMaster) { location.hash = '#/sorteio'; return ''; }
+  const l = L.loadLive();
+  if (!l) return `<a class="back" href="#/sorteio">${I.back}Sorteio</a><div class="empty"><h3>Nenhuma noite em andamento</h3><p>Sorteie os times e toque em "Iniciar a noite com esses times".</p><a class="btn primary" href="#/sorteio">Ir para o sorteio</a></div>`;
+  const wins = L.teamWins(l);
+  const hist = l.history.slice().reverse().map(h => `<div class="ev"><span class="m">${h.n}ª</span>${tDot(h.a)}<b>${h.ga} × ${h.gb}</b>${tDot(h.b)}<span style="color:var(--t2)">${h.winner != null ? tName(l, h.winner) + ' venceu' : 'empate'}</span></div>`).join('');
+  const table = `<div class="lv-table">${l.teams.map((t, i) => `<span>${tDot(i)}${tName(l, i)} <b>${wins[i]}</b>V</span>`).join('')}</div>`;
+
+  if (!l.match) {
+    // entre partidas: escolher o próximo confronto com um toque
+    const keep = l.stay != null ? l.stay : 0;
+    const last = l.history[l.history.length - 1];
+    return `<div class="page-head"><div><h1>${last ? (last.winner != null ? tName(l, last.winner) + ' venceu' : 'Empate') : 'Próxima partida'}</h1>
+      <p>${last ? `${tName(l, last.a)} ${last.ga} × ${last.gb} ${tName(l, last.b)}. ` : ''}${tName(l, keep)} fica em campo.</p></div></div>
+      <div class="lbl-sm">Próximo adversário (toque para escolher)</div>
+      <div class="lv-next">${l.queue.map((ti, k) => `<button class="lv-team ${k === 0 ? 'on' : ''}" data-act="live-next" data-opp="${ti}">${tDot(ti)}<b>${tName(l, ti)}</b><span>${k === 0 ? 'Próximo da fila' : 'Na fila'}</span><small>${l.teams[ti].ids.map(id => esc(dn(playerById(id)))).join(', ')}</small></button>`).join('')}</div>
+      <button class="btn primary block" style="margin-top:14px;min-height:56px;font-size:17px" data-act="live-next" data-opp="${l.queue[0]}">▶ ${tName(l, keep)} × ${tName(l, l.queue[0])}</button>
+      <section class="sec">${table}<div class="lbl-sm" style="margin-top:12px">Partidas da noite</div>${hist || '<p class="hint">Nenhuma ainda.</p>'}</section>
+      <div class="btn-row sec"><button class="btn" data-act="live-edit-teams">Ajustar times</button><button class="btn danger" data-act="live-finish">Encerrar a noite</button></div>`;
+  }
+
+  const m = l.match;
+  const [ga, gb] = L.score(m);
+  const running = !!m.runningSince;
+  const ev = m.events.slice().reverse().map(e => {
+    const p = playerById(e.pid), as = e.ast ? playerById(e.ast) : null;
+    const min = Math.floor((e.at || 0) / 60000) + 1;
+    const icon = e.type === 'g' ? '⚽' : e.type === 'y' ? '<span class="card-y"></span>' : '<span class="card-r"></span>';
+    return `<div class="ev"><span class="m">${min}'</span>${icon}<b>${esc(dn(p))}</b>${e.type === 'g' ? `<span style="color:var(--t2)">${as ? 'assist. ' + esc(dn(as)) : 'sem assist.'}</span>` : ''}<span class="x">${tName(l, e.team)}</span></div>`;
+  }).join('');
+  return `<div class="lv-head"><b>Partida ${m.n}</b>${running ? '<span class="live"><i></i>AO VIVO</span>' : '<span class="live paused">PAUSADO</span>'}</div>
+    <div class="lv-score">
+      <div class="tm">${tDot(m.a)}<div class="n">${tName(l, m.a)}</div></div>
+      <div class="big"><span id="lvGa">${ga}</span><small>×</small><span id="lvGb">${gb}</span></div>
+      <div class="tm">${tDot(m.b)}<div class="n">${tName(l, m.b)}</div></div>
+    </div>
+    <div class="lv-clock"><b id="lvClock">${L.fmtClock(L.remaining(m))}</b><span>${L.remaining(m) === 0 ? 'Tempo esgotado' : `restam de 08:00 · ${GOAL_RULE}`}</span></div>
+    <button class="btn block lv-pause ${running ? '' : 'go'}" data-act="live-clock">${running ? '⏸ Parar cronômetro' : (L.elapsed(m) ? '▶ Continuar' : '▶ Começar partida')}</button>
+    <div class="lv-acts">
+      <button class="lv-act g" style="background:${TEAM_COLORS[m.a % 4]};${m.a % 4 === 2 ? 'color:var(--noite)' : ''}" data-act="live-goal" data-team="${m.a}">⚽<br>Gol ${tName(l, m.a)}</button>
+      <button class="lv-act g" style="background:${TEAM_COLORS[m.b % 4]};${m.b % 4 === 2 || m.b % 4 === 1 ? 'color:var(--noite)' : ''}" data-act="live-goal" data-team="${m.b}">⚽<br>Gol ${tName(l, m.b)}</button>
+      <button class="lv-act" data-act="live-card" data-c="y"><span class="card-y" style="width:14px;height:20px"></span><br>Amarelo</button>
+      <button class="lv-act" data-act="live-card" data-c="r"><span class="card-r" style="width:14px;height:20px"></span><br>Vermelho</button>
+    </div>
+    <div class="lbl-sm">Lances desta partida</div>
+    ${ev || '<p class="hint">Nenhum lance ainda.</p>'}
+    <div class="btn-row sec"><button class="btn" data-act="live-undo" ${m.events.length ? '' : 'disabled'}>Desfazer último</button><button class="btn primary" data-act="live-end">Encerrar partida</button></div>
+    <section class="sec">${table}</section>`;
+}
+const GOAL_RULE = '2 gols vence';
+
+function liveTick() {
+  const el = document.getElementById('lvClock');
+  const l = L.loadLive();
+  if (!el || !l || !l.match) return;
+  const rem = L.remaining(l.match);
+  el.textContent = L.fmtClock(rem);
+  if (rem === 0 && l.match.runningSince) {
+    L.pause(l); L.saveLive(l);
+    try { navigator.vibrate?.([400, 150, 400, 150, 600]); } catch (e) {}
+    beep();
+    render();
+    liveEndFlow('Tempo esgotado');
+  }
+}
+function beep() {
+  try { const ctx = new (window.AudioContext || window.webkitAudioContext)(); const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 880; o.connect(g); g.connect(ctx.destination); g.gain.value = .25; o.start(); setTimeout(() => { o.stop(); ctx.close(); }, 700); } catch (e) {}
+}
+setInterval(() => { if (route().name === 'partida') liveTick(); }, 250);
+
+function pickPlayerSheet(title, ids, opts = {}) {
+  return new Promise(res => {
+    const list = ids.map(playerById).filter(Boolean);
+    openSheet(`<h2>${esc(title)}</h2>${opts.sub ? `<p class="muted" style="margin:-6px 0 12px">${opts.sub}</p>` : ''}
+      <div class="pick">${list.map(p => `<button class="pk" data-pick="${esc(p.id)}">${p.pos === 'G' ? '<span class="gk">GOL</span>' : ''}${avatar(p)}<span class="nm">${esc(dn(p))}</span></button>`).join('')}</div>
+      ${opts.none ? `<button class="btn block" style="margin-top:12px" data-pick="">${esc(opts.none)}</button>` : ''}
+      <button class="btn ghost block" style="margin-top:8px" data-pick="__cancel">Cancelar</button>`, s => {
+      s.addEventListener('click', ev => {
+        const b = ev.target.closest('[data-pick]'); if (!b) return;
+        closeSheet(); res(b.dataset.pick === '__cancel' ? undefined : b.dataset.pick);
+      });
+    });
+  });
+}
+
+async function liveGoal(team) {
+  const l = L.loadLive(); if (!l?.match) return;
+  const ids = l.teams[team].ids;
+  const pid = await pickPlayerSheet(`Gol do ${l.teams[team].name}: quem fez?`, ids);
+  if (pid === undefined) return;
+  const ast = await pickPlayerSheet('Quem deu a assistência?', ids.filter(i => i !== pid), { none: 'Sem assistência' });
+  if (ast === undefined) return;
+  const l2 = L.loadLive(); if (!l2?.match) return;
+  L.addEvent(l2, { type: 'g', team, pid, ast: ast || null });
+  L.saveLive(l2);
+  const [ga, gb] = L.score(l2.match);
+  render();
+  if (ga >= L.GOALS_TO_WIN || gb >= L.GOALS_TO_WIN) {
+    L.pause(l2); L.saveLive(l2); render();
+    try { navigator.vibrate?.([300, 120, 300]); } catch (e) {}
+    beep();
+    liveEndFlow(`${l2.teams[ga > gb ? l2.match.a : l2.match.b].name} fez 2 gols`);
+  }
+}
+
+async function liveCard(kind) {
+  const l = L.loadLive(); if (!l?.match) return;
+  const m = l.match;
+  const ids = [...l.teams[m.a].ids, ...l.teams[m.b].ids];
+  const pid = await pickPlayerSheet(kind === 'y' ? 'Cartão amarelo para quem?' : 'Cartão vermelho para quem?', ids);
+  if (!pid) return;
+  const l2 = L.loadLive(); if (!l2?.match) return;
+  const team = l2.teams[l2.match.a].ids.includes(pid) ? l2.match.a : l2.match.b;
+  L.addEvent(l2, { type: kind, team, pid });
+  L.saveLive(l2); render();
+}
+
+function liveEndFlow(reason) {
+  const l = L.loadLive(); if (!l?.match) return;
+  const m = l.match; const [ga, gb] = L.score(m);
+  const tie = ga === gb;
+  openSheet(`<h2>${esc(reason || 'Encerrar partida')}</h2>
+    <p class="muted" style="margin-bottom:14px">${tName(l, m.a)} ${ga} × ${gb} ${tName(l, m.b)}${tie ? '. Empatou: quem fica em campo?' : `. ${tName(l, ga > gb ? m.a : m.b)} venceu e fica.`}</p>
+    ${tie ? `<div class="btn-row"><button class="btn" data-end="${m.a}">${tName(l, m.a)} fica</button><button class="btn" data-end="${m.b}">${tName(l, m.b)} fica</button></div>`
+      : `<button class="btn primary block" data-end="">Confirmar resultado</button>`}
+    <button class="btn ghost block" style="margin-top:8px" data-end="__back">Voltar para a partida</button>`, s => {
+    s.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-end]'); if (!b) return;
+      closeSheet();
+      if (b.dataset.end === '__back') return;
+      const l2 = L.loadLive(); if (!l2?.match) return;
+      L.endMatch(l2, b.dataset.end === '' ? null : +b.dataset.end);
+      L.saveLive(l2); render(); window.scrollTo(0, 0);
+    });
+  });
+}
+
+async function liveFinish() {
+  const l = L.loadLive(); if (!l) return;
+  if (l.match && (l.match.events.length || L.elapsed(l.match) > 0)) { toast('Encerre a partida em andamento primeiro', true); return; }
+  if (!l.history.length) {
+    const ok = await confirmSheet('Encerrar sem partidas?', 'Nenhuma partida foi jogada. A noite será descartada sem lançar rodada.', 'Descartar noite');
+    if (ok) { L.saveLive(null); keepAwake(false); location.hash = '#/sorteio'; }
+    return;
+  }
+  const posOf = pid => playerById(pid)?.pos || 'L';
+  const { entries, wins } = L.nightEntries(l, posOf);
+  const best = Math.max(...wins);
+  const champs = l.teams.filter((_, i) => wins[i] === best && best > 0).map(t => t.name).join(' e ');
+  const exists = store.rounds.find(r => r.date === l.date && !r.summary);
+  const ok = await confirmSheet('Encerrar a noite e lançar a rodada?', `${l.history.length} partidas. ${champs ? `Campeão: ${esc(champs)} (${best} vitórias). ` : ''}Gols, assistências, cartões, vitórias, empates e derrotas de cada atleta vão para a rodada de ${C.fmtDate(l.date)}.${exists ? ' Já existe uma rodada nessa data: ela será substituída.' : ''}`, 'Lançar rodada', false);
+  if (!ok) return;
+  try {
+    const round = { date: l.date, entries, note: `Contada ao vivo: ${l.history.length} partidas.`, teams: l.teams.map(t => ({ name: t.name, ids: t.ids })), matches: l.history.map(h => ({ a: h.a, b: h.b, ga: h.ga, gb: h.gb })) };
+    const r = await store.saveRound(round, exists?.id || null);
+    L.saveLive(null); keepAwake(false);
+    toast(r === 'queued' ? 'Rodada salva. Sincroniza quando a internet voltar.' : 'Rodada lançada');
+    location.hash = '#/rodada/' + l.date;
+  } catch (e) { toast(e.message, true); }
+}
+
+function liveEditTeams() {
+  const l = L.loadLive(); if (!l) return;
+  const all = store.players.filter(p => p.active !== false).sort((x, y) => dn(x).localeCompare(dn(y)));
+  const where = {}; l.teams.forEach((t, i) => t.ids.forEach(id => { where[id] = i; }));
+  openSheet(`<h2>Ajustar times</h2><p class="muted" style="margin:-6px 0 12px">Toque no atleta para trocar de time. Quem chegou atrasado entra aqui.</p>
+    <div id="ltBody"></div><button class="btn primary block" style="margin-top:14px" data-lt="save">Salvar times</button>`, s => {
+    const draw = () => {
+      $('#ltBody', s).innerHTML = [...l.teams.map((t, i) => i), -1].map(i => `<div class="group-title" style="display:flex;gap:8px;align-items:center">${i >= 0 ? tDot(i) + tName(l, i) : 'Fora dos times'}</div>
+        <div class="pick">${all.filter(p => (where[p.id] ?? -1) === i).map(p => `<button class="pk" data-lt="mv" data-id="${esc(p.id)}">${avatar(p, 's')}<span class="nm">${esc(dn(p))}</span></button>`).join('') || '<span class="hint">Ninguém</span>'}</div>`).join('');
+    };
+    draw();
+    s.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-lt]'); if (!b) return;
+      if (b.dataset.lt === 'mv') {
+        const cur = where[b.dataset.id] ?? -1;
+        const nxt = cur + 1 >= l.teams.length ? -1 : cur + 1;
+        if (nxt === -1) delete where[b.dataset.id]; else where[b.dataset.id] = nxt;
+        draw();
+      }
+      if (b.dataset.lt === 'save') {
+        const l2 = L.loadLive(); if (!l2) return;
+        l2.teams.forEach((t, i) => { t.ids = Object.keys(where).filter(id => where[id] === i); });
+        L.saveLive(l2); closeSheet(); render(); toast('Times ajustados');
+      }
+    });
+  });
 }
 
 function drawShareText() {
@@ -831,7 +1035,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 18.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 19.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1580,6 +1784,23 @@ const actions = {
     if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e.name === 'AbortError') return; } }
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
   },
+  'live-start': async () => {
+    const teams = state.draw.result.map((ids, i) => ({ name: TEAM_NAMES[i], ids }));
+    if (teams.length < 2) { toast('Sorteie pelo menos 2 times', true); return; }
+    if (L.loadLive()) { const ok = await confirmSheet('Já tem uma noite em andamento', 'Começar uma nova noite descarta a que está em andamento neste celular.', 'Começar nova noite'); if (!ok) return; }
+    const n = now();
+    L.saveLive(L.newNight(teams, C.isoDate(n.getDay() === 2 ? n : C.lastTuesday(n))));
+    keepAwake(true);
+    location.hash = '#/partida';
+  },
+  'live-clock': () => { const l = L.loadLive(); if (!l?.match) return; if (L.remaining(l.match) === 0) { liveEndFlow('Tempo esgotado'); return; } L.toggleClock(l); L.saveLive(l); keepAwake(true); render(); },
+  'live-goal': el => liveGoal(+el.dataset.team),
+  'live-card': el => liveCard(el.dataset.c),
+  'live-undo': () => { const l = L.loadLive(); if (!l?.match) return; const e = L.undo(l); L.saveLive(l); render(); if (e) toast('Último lance desfeito'); },
+  'live-end': () => liveEndFlow('Encerrar partida'),
+  'live-next': el => { const l = L.loadLive(); if (!l) return; L.nextMatch(l, +el.dataset.opp); L.saveLive(l); keepAwake(true); render(); window.scrollTo(0, 0); },
+  'live-finish': () => liveFinish(),
+  'live-edit-teams': () => liveEditTeams(),
   'draw-publish': async el => {
     const teams = state.draw.result.map((ids, i) => ({ name: TEAM_NAMES[i], ids }));
     const n = now(); const date = C.isoDate(n.getDay() === 2 ? n : C.nextGame(n));
