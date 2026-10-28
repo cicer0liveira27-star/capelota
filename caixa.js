@@ -3,6 +3,9 @@ export const DEFAULT_PRICES = { mensal: 50, diaria: 17 };
 export const EXPENSE_CATS = ['Aluguel do Campo', 'Goleiros', 'Água', 'Outros'];
 export const METHODS = ['PIX', 'Dinheiro', 'Cartão'];
 
+// O caixa começou a ser controlado em outubro/2026: meses anteriores estão todos quitados
+export const FINANCE_START = '2026-10';
+
 export const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 export const monthKey = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
 
@@ -23,7 +26,8 @@ export function monthView(players, rounds, y, m, doc) {
   const fees = [...feeIds].map(id => {
     const p = players.find(x => x.id === id);
     const f = d.fees?.[id] || {};
-    return { id, p, paid: !!f.paid, amount: f.amount ?? d.prices.mensal, paidAt: f.paidAt || '', method: f.method || '', receiptId: f.receiptId || '', receiptName: f.receiptName || '', note: f.note || '' };
+    const paid = f.paid != null ? !!f.paid : key < FINANCE_START;
+    return { id, p, paid, amount: f.amount ?? d.prices.mensal, paidAt: f.paidAt || '', method: f.method || '', receiptId: f.receiptId || '', receiptName: f.receiptName || '', note: f.note || '' };
   }).filter(x => x.p).sort((a, b) => (a.paid - b.paid) || name(a.p).localeCompare(name(b.p)));
   // diárias: presenças de quem não é mensalista nas rodadas do mês
   const pres = {};
@@ -49,6 +53,21 @@ export function monthView(players, rounds, y, m, doc) {
 }
 
 const name = p => p?.nick || p?.name || '';
+
+// Vencimento da mensalidade: dia da primeira pelada do mês (primeira terça)
+export function dueDate(y, m) {
+  const d = new Date(y, m - 1, 1);
+  while (d.getDay() !== 2) d.setDate(d.getDate() + 1);
+  return `${y}-${String(m).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Quem está devendo a mensalidade do mês depois do vencimento (lista vazia antes do dia)
+export function overdue(players, rounds, finance, today) {
+  const y = +today.slice(0, 4), m = +today.slice(5, 7);
+  const key = monthKey(y, m);
+  if (key < FINANCE_START || today < dueDate(y, m)) return [];
+  return monthView(players, rounds, y, m, finance?.[key]).fees.filter(f => !f.paid);
+}
 
 // Resultado de todos os meses salvos até (e incluindo) o mês pedido
 export function saldoAcumulado(players, rounds, finance, y, m) {

@@ -649,3 +649,11 @@ details.panel summary::-webkit-details-marker { color: var(--texto-3); }
 .cx-ico.out { background: color-mix(in srgb, var(--sombrero) 22%, transparent); color: var(--sombrero-claro); }
 .tabbar a span { white-space: nowrap; }
 .cx-card b { font-size: clamp(16px, 4.6vw, 24px); white-space: nowrap; overflow-wrap: normal; }
+
+/* caixa: 5 abas roláveis, cards de despesa clicáveis */
+.cx-seg { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.cx-seg::-webkit-scrollbar { display: none; }
+.cx-seg button { flex: 1 0 auto; padding: 0 12px; white-space: nowrap; font-size: 14px; }
+.cx-cards.two { grid-template-columns: repeat(2, 1fr); }
+button.cx-card { text-align: left; color: var(--texto); font: inherit; cursor: pointer; }
+button.cx-card b { color: var(--sombrero-claro); }

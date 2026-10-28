@@ -203,7 +203,31 @@ store.subscribe(() => {
   const y = window.scrollY;
   render();
   window.scrollTo(0, y);
+  debtReminder();
 });
+
+// Lembrete de inadimplentes: a mensalidade vence no dia da primeira pelada do mês.
+// A partir desse dia, quem ainda não pagou aparece num aviso (uma vez por dia, só para a comissão).
+function debtReminder() {
+  if (!store.isMaster || !store.ready) return;
+  if (store.mode === 'cloud' && !store.financeLoaded) return;
+  if (!sheetRoot.hidden) return;
+  const today = C.isoDate(now());
+  const key = 'capelota:debt:' + today;
+  try { if (localStorage.getItem(key)) return; } catch (e) {}
+  const list = K.overdue(store.players, store.rounds, store.finance, today);
+  if (!list.length) return;
+  try { localStorage.setItem(key, '1'); } catch (e) {}
+  const y = +today.slice(0, 4), m = +today.slice(5, 7);
+  const due = K.dueDate(y, m);
+  const total = list.reduce((a, f) => a + f.amount, 0);
+  const pix = store.finance[K.monthKey(y, m)]?.pix;
+  openSheet(`<h2>⚠️ Mensalidade em atraso</h2>
+    <p class="muted">A mensalidade de ${C.MONTHS[m - 1].toLowerCase()} venceu ${today === due ? '<b>hoje</b>, no dia da primeira pelada' : 'em ' + fmtD(due) + ', dia da primeira pelada'}. Ainda ${list.length === 1 ? 'falta 1 mensalista' : `faltam ${list.length} mensalistas`}:</p>
+    <div class="sheet-table" style="margin-top:10px">${list.map(f => `<div class="st-row">${avatar(f.p, 's')}<span class="nm">${esc(dn(f.p))}<small>Mensalidade em aberto</small></span><span class="line"><b>${K.brl(f.amount)}</b>${pill(false, '', 'Inadimplente')}</span></div>`).join('')}</div>
+    <p class="hint" style="margin-top:10px">Total a receber: <b>${K.brl(total)}</b>${pix ? ` · PIX: <b>${esc(pix)}</b>` : ''}</p>
+    <div class="btn-row" style="margin-top:12px"><button class="btn primary" data-act="cx-debt">Abrir o caixa</button><button class="btn ghost" data-act="sheet-close">Fechar</button></div>`);
+}
 
 // ================= período =================
 function roundDates() { return C.sortedRounds(store.rounds.filter(r => !r.summary)).map(r => r.date); }
@@ -704,7 +728,7 @@ function vCaixa() {
       <button aria-label="Mês anterior" data-act="cx-step" data-d="-1">${I.prev}</button>
       <div class="lbl">${C.MONTHS[s.m - 1]} ${s.y}</div>
       <button aria-label="Próximo mês" data-act="cx-step" data-d="1">${I.next}</button></div>`;
-  const seg = `<div class="seg" style="margin-bottom:14px">${[['mens', 'Mensalidades'], ['dia', 'Diárias'], ['caixa', 'Caixa do mês']].map(([k, l]) => `<button class="${s.tab === k ? 'on' : ''}" data-act="cx-tab" data-t="${k}">${l}</button>`).join('')}</div>`;
+  const seg = `<div class="seg cx-seg" style="margin-bottom:14px">${[['mens', 'Mensalidades'], ['dia', 'Diárias'], ['rec', 'Receitas'], ['desp', 'Despesas'], ['caixa', 'Caixa do mês']].map(([k, l]) => `<button class="${s.tab === k ? 'on' : ''}" data-act="cx-tab" data-t="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
   if (s.tab === 'mens') {
     const reg = v.fees.filter(f => f.paid), inad = v.fees.filter(f => !f.paid);
@@ -731,8 +755,30 @@ function vCaixa() {
         <span class="nm">${esc(dn(d.p))}<small>${TIPOS[tipoOf(d.p)]} · ${d.count} ${d.count === 1 ? 'presença' : 'presenças'}${d.receiptId ? ' · 📎' : ''}</small></span>
         <span class="line"><b>${K.brl(d.amount)}</b>${pill(d.paid, 'Pago', 'Pendente')}</span></button>`).join('')}</div>` : `<div class="empty"><p>Nenhum diarista jogou neste mês.</p></div>`}
       <p class="hint" style="margin-top:10px">As diárias saem das presenças nas rodadas do mês (${K.brl(v.doc.prices.diaria)} cada) e entram como pagas. Toque para marcar como pendente.</p>`;
+  } else if (s.tab === 'rec') {
+    const inc = (v.doc.income || []).slice().sort((x, y) => (y.date || '').localeCompare(x.date || ''));
+    body = `<div class="cx-result ok"><span>Receitas de ${C.MONTHS[s.m - 1].toLowerCase()}</span><b>${K.brl(T.entradas)}</b>
+        <small>tudo que entrou no caixa</small></div>
+      <div class="sheet-table" style="margin-top:12px">
+        <button class="st-row cx-row" data-act="cx-tab" data-t="mens"><span class="cx-ico in">＋</span><span class="nm">Mensalidades<small>${v.fees.filter(f => f.paid).length} de ${v.fees.length} pagas</small></span><span class="line"><b>${K.brl(T.feePaid)}</b></span></button>
+        <button class="st-row cx-row" data-act="cx-tab" data-t="dia"><span class="cx-ico in">＋</span><span class="nm">Diárias<small>${v.daily.filter(d => d.paid).reduce((x, d) => x + d.count, 0)} diárias recebidas</small></span><span class="line"><b>${K.brl(T.dayPaid)}</b></span></button>
+        ${inc.map(x => `<button class="st-row cx-row" data-act="cx-inc" data-id="${esc(x.id)}"><span class="cx-ico in">＋</span><span class="nm">${esc(x.desc || 'Outra receita')}<small>${fmtD(x.date)}${x.method ? ' · ' + esc(x.method) : ''}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}
+      </div>
+      <button class="btn block" style="margin-top:12px" data-act="cx-inc">＋ Nova receita</button>
+      <p class="hint" style="margin-top:10px">Mensalidades e diárias entram sozinhas. Use “Nova receita” para outras entradas (patrocínio, venda de uniforme, multa…).</p>`;
+  } else if (s.tab === 'desp') {
+    const exp = (v.doc.expenses || []).slice().sort((x, y) => (y.date || '').localeCompare(x.date || ''));
+    const byCat = K.EXPENSE_CATS.map(c => [c, exp.filter(x => (x.cat || 'Outros') === c).reduce((a, x) => a + (+x.amount || 0), 0)]);
+    body = `<div class="cx-result bad"><span>Despesas de ${C.MONTHS[s.m - 1].toLowerCase()}</span><b>${K.brl(T.saidas)}</b>
+        <small>tudo que saiu do caixa</small></div>
+      <div class="cx-cards two" style="margin-top:10px">${byCat.map(([c, val]) => `<button class="cx-card" data-act="cx-exp" data-cat="${esc(c)}"><span>${esc(c)}</span><b>${K.brl(val)}</b><small>＋ lançar</small></button>`).join('')}</div>
+      ${exp.length ? `<div class="sheet-table" style="margin-top:12px">${exp.map(x => `<button class="st-row cx-row" data-act="cx-exp" data-id="${esc(x.id)}"><span class="cx-ico out">−</span>
+        <span class="nm">${esc(x.cat)}${x.desc ? ' · ' + esc(x.desc) : ''}<small>${fmtD(x.date)}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma despesa lançada neste mês.</p></div>`}
+      <button class="btn block" style="margin-top:12px" data-act="cx-exp">＋ Nova despesa</button>`;
   } else {
     const acc = K.saldoAcumulado(store.players, store.rounds, store.finance, s.y, s.m);
+    const exp = v.doc.expenses || [];
+    const cats = K.EXPENSE_CATS.map(c => [c, exp.filter(x => (x.cat || 'Outros') === c).reduce((a, x) => a + (+x.amount || 0), 0)]).filter(([, val]) => val);
     body = `<div class="cx-result ${T.resultado >= 0 ? 'ok' : 'bad'}"><span>Resultado de ${C.MONTHS[s.m - 1].toLowerCase()}</span><b>${K.brl(T.resultado)}</b>
         <small>Entradas ${K.brl(T.entradas)} − Saídas ${K.brl(T.saidas)}</small></div>
       <div class="cx-cards" style="margin-top:10px">
@@ -741,16 +787,14 @@ function vCaixa() {
       </div>
       <div class="sec-head" style="margin-top:22px"><h2>Entradas</h2><b class="cx-in">${K.brl(T.entradas)}</b></div>
       <div class="sheet-table">
-        <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Mensalidades<small>${v.fees.filter(f => f.paid).length} de ${v.fees.length} pagas</small></span><span class="line"><b>${K.brl(T.feePaid)}</b></span></div>
-        <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Diárias<small>${v.daily.filter(d => d.paid).reduce((x, d) => x + d.count, 0)} diárias recebidas</small></span><span class="line"><b>${K.brl(T.dayPaid)}</b></span></div>
-        ${(v.doc.income || []).map(x => `<button class="st-row cx-row" data-act="cx-inc" data-id="${esc(x.id)}"><span class="cx-ico in">＋</span><span class="nm">${esc(x.desc || 'Outra receita')}<small>${fmtD(x.date)}${x.receiptId ? ' · 📎' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}
+        <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Mensalidades</span><span class="line"><b>${K.brl(T.feePaid)}</b></span></div>
+        <div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Diárias</span><span class="line"><b>${K.brl(T.dayPaid)}</b></span></div>
+        ${T.other ? `<div class="st-row"><span class="cx-ico in">＋</span><span class="nm">Outras receitas</span><span class="line"><b>${K.brl(T.other)}</b></span></div>` : ''}
       </div>
-      <button class="btn sm" style="margin-top:8px" data-act="cx-inc">${I.plus.replace('<svg', '<svg style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round"')}Outra receita</button>
       <div class="sec-head" style="margin-top:22px"><h2>Saídas</h2><b class="cx-out">${K.brl(T.saidas)}</b></div>
-      ${(v.doc.expenses || []).length ? `<div class="sheet-table">${v.doc.expenses.slice().sort((x, y) => (y.date || '').localeCompare(x.date || '')).map(x => `<button class="st-row cx-row" data-act="cx-exp" data-id="${esc(x.id)}"><span class="cx-ico out">−</span>
-        <span class="nm">${esc(x.cat)}${x.desc ? ' · ' + esc(x.desc) : ''}<small>${fmtD(x.date)}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma despesa lançada.</p></div>`}
-      <div class="chips" style="margin-top:10px">${K.EXPENSE_CATS.map(c => `<button class="chip" data-act="cx-exp" data-cat="${esc(c)}">＋ ${esc(c)}</button>`).join('')}</div>
-      <button class="btn sm" style="margin-top:14px" data-act="cx-prices">Valores: mensalidade ${K.brl(v.doc.prices.mensal)} · diária ${K.brl(v.doc.prices.diaria)}</button>`;
+      ${cats.length ? `<div class="sheet-table">${cats.map(([c, val]) => `<div class="st-row"><span class="cx-ico out">−</span><span class="nm">${esc(c)}</span><span class="line"><b>${K.brl(val)}</b></span></div>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma despesa lançada.</p></div>`}
+      <div class="btn-row" style="margin-top:14px"><button class="btn sm" data-act="cx-tab" data-t="rec">Ver receitas</button><button class="btn sm" data-act="cx-tab" data-t="desp">Ver despesas</button></div>
+      <button class="btn sm" style="margin-top:10px" data-act="cx-prices">Valores: mensalidade ${K.brl(v.doc.prices.mensal)} · diária ${K.brl(v.doc.prices.diaria)}</button>`;
   }
   return `<div class="page-head"><div><h1>Caixa</h1><p>Só a comissão vê esta área.</p></div></div>${nav}${seg}${body}`;
 }
@@ -1249,7 +1293,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 25.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 26.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2074,6 +2118,7 @@ const actions = {
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
   },
   'cx-step': el => { let { y, m } = state.cx; m += +el.dataset.d; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; } state.cx.y = y; state.cx.m = m; render(); },
+  'cx-debt': () => { closeSheet(); Object.assign(state.cx, { y: thisY(), m: thisM(), tab: 'mens', filter: 'inad' }); if (location.hash === '#/caixa') render(); else location.hash = '#/caixa'; },
   'cx-tab': el => { state.cx.tab = el.dataset.t; render(); },
   'cx-filter': el => { state.cx.filter = el.dataset.f; render(); },
   'cx-fee': el => feeSheet(el.dataset.id),
