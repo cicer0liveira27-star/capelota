@@ -15,10 +15,13 @@ export const DEFAULT_SETTINGS = {
 };
 
 // Só para o modo local: hash PBKDF2 de "cpf|senha". Os CPFs não ficam escritos no código.
-// Masters fundadores. Os novos masters ficam guardados nos dados (lista "masters").
+// Fundador do site: só o Cícero. Os membros da comissão ficam guardados nos dados (lista "masters").
 const LOCAL_MASTERS = [
-  { h: '9919eab5c385c3519d2ab89589228b53289fbfa5b90b84ba22b9a01aae07cfa0', name: 'Cícero', playerId: 'pl-cicero', founder: true },
-  { h: 'd07b0a51fe7deba48f9efbfd964b01f298dd22c612b25c2824974c4263013699', name: 'Alyson', playerId: 'pl-alyson', founder: true }
+  { h: '9919eab5c385c3519d2ab89589228b53289fbfa5b90b84ba22b9a01aae07cfa0', name: 'Cícero', playerId: 'pl-cicero', founder: true }
+];
+// Comissão inicial (pode ser removida pelo app como qualquer membro)
+const DEFAULT_MEMBERS = [
+  { id: 'm-alyson', h: 'd07b0a51fe7deba48f9efbfd964b01f298dd22c612b25c2824974c4263013699', name: 'Alyson', playerId: 'pl-alyson', cpfEnd: '42447', addedBy: 'Cícero' }
 ];
 
 // Confere os dígitos verificadores do CPF
@@ -93,7 +96,7 @@ class Store {
     this.rounds = data?.rounds || [];
     this.settings = normSettings(data?.settings);
     this.draw = data?.draw || null;
-    this.masters = data?.masters || [];
+    this.masters = Array.isArray(data?.masters) ? data.masters : clone(DEFAULT_MEMBERS);
     try { const m = JSON.parse(localStorage.getItem(LS_MASTER) || 'null'); if (m?.name) this.user = { name: m.name, cpf: m.cpf || '' }; } catch (e) {}
     this.loaded = { players: true, rounds: true, settings: true };
     this._emit();
@@ -243,7 +246,7 @@ class Store {
 
   async removeMaster(playerId, pass) {
     await this.confirmPassword(pass);
-    if (LOCAL_MASTERS.some(m => m.playerId === playerId)) throw new Error('Os masters fundadores não podem ser removidos pelo app.');
+    if (LOCAL_MASTERS.some(m => m.playerId === playerId)) throw new Error('O fundador do site não pode ser removido.');
     const m = this.masters.find(x => x.playerId === playerId);
     if (!m) return 'ok';
     if (this.mode === 'cloud') { const { fsM, db } = this.fb; return this._cloudWrite(fsM.deleteDoc(fsM.doc(db, 'masters', m.id))); }

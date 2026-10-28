@@ -567,7 +567,7 @@ function vAtleta(id) {
         <div class="facts">
           <span class="pill ${isG ? '' : 'red'}">${isG ? 'Goleiro' : 'Linha'}</span>
           ${p.num ? `<span class="pill">Camisa ${esc(p.num)}</span>` : ''}
-          ${store.isPlayerMaster(p.id) ? `<span class="pill red">Comissão</span>` : ''}
+          ${store.isPlayerMaster(p.id) ? `<span class="pill red">${store.commission.some(m => m.playerId === p.id && m.founder) ? 'Fundador do site' : 'Membro da comissão'}</span>` : ''}
           <span class="pill">${ta.p} ${ta.p === 1 ? 'presença' : 'presenças'}</span>
           ${store.isMaster ? `<span class="pill" title="Nível para o sorteio (só masters veem)"><span class="stars">${'★'.repeat(level)}</span>${'☆'.repeat(5 - level)}</span>` : ''}
           ${p.active === false ? `<span class="pill">Fora do elenco</span>` : ''}
@@ -775,7 +775,7 @@ function vAjustes() {
     <div class="panel"><h3>Acesso master</h3>
       ${M ? `<p>Você está como master${store.user?.name ? `: <b style="color:var(--texto)">${esc(store.user.name)}</b>` : ''}. Pode cadastrar atletas, lançar, editar e apagar rodadas.</p>
         <div class="group-title" style="margin-top:4px">Comissão</div>
-        <div class="sheet-table" style="margin-bottom:12px">${store.commission.map(m => { const pl = playerById(m.playerId); return `<a class="st-row" href="${pl ? '#/atleta/' + esc(pl.id) : '#/ajustes'}">${avatar(pl || { id: m.name, name: m.name }, 's')}<span class="nm">${esc(m.name)}<small>${m.founder ? 'Fundador' : m.cpfEnd ? 'CPF ' + maskCpfEnd('000000' + m.cpfEnd) : 'Master'}</small></span><span></span></a>`; }).join('')}</div>
+        <div class="sheet-table" style="margin-bottom:12px">${store.commission.map(m => { const pl = playerById(m.playerId); return `<a class="st-row" href="${pl ? '#/atleta/' + esc(pl.id) : '#/ajustes'}">${avatar(pl || { id: m.name, name: m.name }, 's')}<span class="nm">${esc(m.name)}<small>${m.founder ? 'Fundador do site' : 'Membro da comissão' + (m.cpfEnd ? ', CPF ' + maskCpfEnd('000000' + m.cpfEnd) : '')}</small></span><span></span></a>`; }).join('')}</div>
         <p class="hint" style="margin-bottom:12px">Para dar acesso a mais alguém, abra o perfil do atleta, toque em Editar e ligue "Comissão".</p>
         <button class="btn" data-act="logout">Sair do acesso master</button>`
       : `<p>Todo mundo vê as estatísticas. Só masters (CPF e senha) podem cadastrar, editar e apagar.</p>
@@ -817,7 +817,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 9.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 10.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1086,11 +1086,11 @@ function playerSheet(p) {
     <div class="toggle-row"><span><b>No elenco</b><br><span class="hint">Desligue para tirar do álbum e do sorteio sem apagar as estatísticas.</span></span>
       <button type="button" class="switch" role="switch" aria-checked="${active}" data-pf="active" aria-label="No elenco"></button></div>
     <div class="master-box ${masterOn ? 'on' : ''}">
-      <div class="toggle-row" style="padding:0"><span><b>Comissão (acesso master)</b><br><span class="hint">Pode lançar rodadas, sortear, editar atletas e compartilhar.</span></span>
+      <div class="toggle-row" style="padding:0"><span><b>Membro da comissão (acesso master)</b><br><span class="hint">Pode lançar rodadas, sortear, editar atletas e compartilhar.</span></span>
         <button type="button" class="switch" role="switch" aria-checked="${masterOn}" data-pf="master" aria-label="Acesso master" ${founder ? 'disabled' : ''}></button></div>
       ${masterOn && !wasMaster ? `<div class="field" style="margin:14px 0 0"><label for="pfCpf">CPF do novo master</label><input class="input" id="pfCpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" value="${esc(p.cpf)}">
         <span class="hint">Ele entra com esse CPF e a senha geral da comissão. Para salvar, você confirma com a sua senha.</span></div>` : ''}
-      ${wasMaster ? `<p class="hint" style="margin-top:10px">${founder ? 'Master fundador.' : `Faz parte da comissão${mrec?.cpfEnd ? `, CPF ${maskCpfEnd('000000' + mrec.cpfEnd)}` : ''}${mrec?.addedBy ? `, adicionado por ${esc(mrec.addedBy)}` : ''}.`}${!founder && !masterOn ? ' Ao salvar, ele perde o acesso.' : ''}</p>` : ''}
+      ${wasMaster ? `<p class="hint" style="margin-top:10px">${founder ? 'Fundador do site. Não pode ser removido.' : `Membro da comissão${mrec?.cpfEnd ? `, CPF ${maskCpfEnd('000000' + mrec.cpfEnd)}` : ''}${mrec?.addedBy ? `, adicionado por ${esc(mrec.addedBy)}` : ''}.`}${!founder && !masterOn ? ' Ao salvar, ele perde o acesso.' : ''}</p>` : ''}
     </div>
     <button class="btn primary block" data-pf="save">Salvar atleta</button>
     ${isNew ? '' : '<button class="btn danger block" style="margin-top:10px" data-pf="del">Apagar atleta</button>'}`;
@@ -1130,7 +1130,7 @@ function playerSheet(p) {
             if (promote) await store.addMaster({ cpf: v.cpf, playerId: id, name: who }, pass);
             else await store.removeMaster(id, pass);
           });
-          if (ok) toast(promote ? `${who} agora é master` : `${who} saiu da comissão`);
+          if (ok) toast(promote ? `${who} agora é membro da comissão` : `${who} saiu da comissão`);
           else toast('Nada foi salvo');
           return;
         }
