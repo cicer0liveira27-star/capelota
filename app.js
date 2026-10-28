@@ -798,7 +798,7 @@ function vAjustes() {
         ? `<div class="status ok"><i></i><span>Banco compartilhado ligado. Todo mundo que abre o app vê os mesmos números, em tempo real.</span></div>`
         : `<div class="status"><i></i><span>Modo local: os dados ficam só neste aparelho. Para a galera toda acompanhar, ligue o banco compartilhado (passo a passo no README do projeto).</span></div>`}
       <p>${store.players.length} atletas e ${C.roundCount(store.rounds)} rodadas guardados${store.usingSeed ? ', vindos da planilha oficial publicada com o app' : ''}.</p>
-      ${M ? `<button class="btn" data-act="load-seed">Carregar dados da planilha</button>` : ''}
+      ${M ? `<button class="btn" data-act="load-seed">Atualizar estatísticas pela planilha</button>` : ''}
       ${M && store.deviceData ? `<div class="status" style="margin-top:12px"><i></i><span>Este aparelho tem dados salvos de antes do banco compartilhado (${store.deviceData.players.length} atletas, ${store.deviceData.rounds.length} registros), com as edições feitas aqui.</span></div>
         <div class="btn-row"><button class="btn primary" data-act="push-device">Enviar dados deste aparelho para o banco</button><button class="btn ghost" data-act="drop-device">Descartar</button></div>` : ''}
     </div>
@@ -831,7 +831,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 16.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 17.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1538,11 +1538,14 @@ const actions = {
   'load-seed': async () => {
     try {
       const data = await store.fetchSeed();
-      const ok = await confirmSheet('Carregar dados da planilha?', `São ${data.players.length} atletas e o resumo de ${data.rounds.length} meses de 2026. Isso substitui os dados atuais${store.mode === 'cloud' ? ' para todo mundo' : ' deste aparelho'}.`, 'Carregar dados', false);
+      const months = new Set(data.rounds.map(r => r.date.slice(0, 7))).size;
+      const ok = await confirmSheet('Atualizar com a planilha?', `Troca as estatísticas dos ${months} meses que estão na planilha${store.mode === 'cloud' ? ', para todo mundo' : ''}. Fotos, apelidos, números, vínculo e nível dos atletas continuam como estão. Atletas novos da planilha são adicionados.`, 'Atualizar estatísticas', false);
       if (!ok) return;
-      const r = await store.importAll(data); toast(`Dados da planilha carregados: ${r.players} atletas`);
+      const r = await store.importSheet(data);
+      toast(`Planilha aplicada: ${r.months} meses${r.newPlayers ? `, ${r.newPlayers} atletas novos` : ''}`);
     } catch (e) { toast(e.message, true); }
   },
+
   'edit-month': el => editMonthSheet(+el.dataset.y, +el.dataset.m),
   'sheet-close-go': el => { closeSheet(); location.hash = el.getAttribute('href'); },
   'aw-step': el => {

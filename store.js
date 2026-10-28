@@ -429,9 +429,9 @@ class Store {
       players.forEach(({ id, ...rest }) => ops.push(b => b.set(fsM.doc(db, 'players', id), rest)));
       rounds.forEach(({ id, ...rest }) => ops.push(b => b.set(fsM.doc(db, 'rounds', id), rest)));
       ops.push(b => b.set(fsM.doc(db, 'settings', 'main'), settings));
-      for (let i = 0; i < ops.length; i += 200) {
+      for (let i = 0; i < ops.length; i += 25) {
         const batch = fsM.writeBatch(db);
-        ops.slice(i, i + 200).forEach(fn => fn(batch));
+        ops.slice(i, i + 25).forEach(fn => fn(batch));
         await this._cloudWrite(batch.commit());
       }
       return { players: players.length, rounds: rounds.length };
@@ -441,5 +441,41 @@ class Store {
     return { players: players.length, rounds: rounds.length };
   }
 }
+
+// Atualização vinda da planilha: troca só as ESTATÍSTICAS dos meses que vieram nela.
+// Perfil de cada atleta (foto, apelido, número, vínculo, posição, nível, elenco, nome) continua como está no app.
+const PROFILE_FIELDS = ['name', 'nick', 'photo', 'num', 'tipo', 'pos', 'level', 'active', 'createdAt'];
+Store.prototype.importSheet = async function (data) {
+  this._requireMaster();
+  await this._ensureBase();
+  if (!data || !Array.isArray(data.players) || !Array.isArray(data.rounds)) throw new Error('Esses dados da planilha não são válidos.');
+  const cur = new Map(this.players.map(p => [p.id, p]));
+  const newPlayers = [];
+  data.players.forEach(p => {
+    const e = cur.get(p.id);
+    if (!e) { newPlayers.push(p); return; }
+  });
+  const months = new Set(data.rounds.map(r => r.date.slice(0, 7)));
+  const dropRounds = this.rounds.filter(r => months.has(r.date.slice(0, 7)));
+  const rounds = data.rounds.map(r => ({ ...r, id: r.id || r.date }));
+  if (this.mode === 'cloud') {
+    const { db, fsM } = this.fb;
+    const ops = [];
+    const keep = new Set(rounds.map(r => r.id));
+    dropRounds.filter(r => !keep.has(r.id)).forEach(r => ops.push(b => b.delete(fsM.doc(db, 'rounds', r.id))));
+    rounds.forEach(({ id, ...rest }) => ops.push(b => b.set(fsM.doc(db, 'rounds', id), rest)));
+    newPlayers.forEach(({ id, ...rest }) => ops.push(b => b.set(fsM.doc(db, 'players', id), rest)));
+    for (let i = 0; i < ops.length; i += 25) {
+      const batch = fsM.writeBatch(db);
+      ops.slice(i, i + 25).forEach(fn => fn(batch));
+      await this._cloudWrite(batch.commit());
+    }
+  } else {
+    this.players = [...this.players, ...newPlayers];
+    this.rounds = [...this.rounds.filter(r => !months.has(r.date.slice(0, 7))), ...rounds];
+    this._persistLocal(); this._emit();
+  }
+  return { months: months.size, newPlayers: newPlayers.length, kept: this.players.length };
+};
 
 export const store = new Store();
