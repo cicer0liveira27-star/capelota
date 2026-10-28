@@ -658,3 +658,15 @@ details.panel summary::-webkit-details-marker { color: var(--texto-3); }
 button.cx-card { text-align: left; color: var(--texto); font: inherit; cursor: pointer; }
 button.cx-card b { color: var(--sombrero-claro); }
 button.cx-card.in b { color: #3ccf8e; }
+
+/* botão de fechar das janelas */
+.sheet { position: relative; }
+.sheet-x {
+  position: absolute; top: 12px; right: 12px; width: 38px; height: 38px; border-radius: 50%;
+  border: 1px solid var(--risca); background: var(--vest); color: var(--texto); font-size: 17px; line-height: 1;
+  display: grid; place-items: center; cursor: pointer; z-index: 2;
+}
+.sheet-x:active { transform: scale(.94); }
+.sheet h2 { padding-right: 46px; }
+/* campo de data não estoura a largura no iPhone */
+.sheet input[type="date"], .sheet input[type="time"] { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; -webkit-appearance: none; appearance: none; text-align: left; }

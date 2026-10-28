@@ -1396,7 +1396,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 31.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 32.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1541,7 +1541,7 @@ function refreshPlayer(pid) {
 
 // ================= FOLHAS (bottom sheets) =================
 function openSheet(html, onMount) {
-  sheetRoot.innerHTML = `<div class="sheet-bg" data-act="sheet-close"></div><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div>`;
+  sheetRoot.innerHTML = `<div class="sheet-bg" data-act="sheet-close"></div><div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div><button class="sheet-x" aria-label="Fechar" data-act="sheet-close">✕</button>${html}</div>`;
   sheetRoot.hidden = false;
   document.body.style.overflow = 'hidden';
   if (onMount) onMount($('.sheet', sheetRoot));
@@ -2361,6 +2361,8 @@ const actions = {
     try { await store.deleteRound(date); state.editor = null; toast('Apagado'); location.hash = '#/inicio'; } catch (e) { toast(e.message, true); }
   }
 };
+
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !sheetRoot.hidden) closeSheet(); });
 
 document.addEventListener('click', ev => {
   const el = ev.target.closest('[data-act]');
