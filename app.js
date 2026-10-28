@@ -153,6 +153,8 @@ function render() {
   let r = route();
   drawTabs();
   if (!store.isMaster && !PUBLIC_ROUTES.includes(r.name)) {
+    // espera saber se é master antes de mandar para a tela pública
+    if (!store.authReady) { view.innerHTML = `<div class="boot"><img src="icons/logo-256.png" alt="" width="120"><p>Carregando a resenha…</p></div>`; return; }
     history.replaceState(null, '', '#/sorteio'); r = route();
   }
   const tab = { caixa: 'caixa', partida: 'sorteio', inicio: 'inicio', rodada: 'inicio', lancar: 'inicio', ranking: 'ranking', atletas: 'atletas', atleta: 'atletas', sorteio: 'sorteio', premios: 'premios' }[r.name];
@@ -697,7 +699,6 @@ const pill = (ok, okTxt, badTxt) => `<span class="cx-pill ${ok ? 'ok' : 'bad'}">
 const fmtD = s => s ? C.fmtDate(s, { year: false }) : '';
 
 function vCaixa() {
-  if (!store.isMaster) { location.hash = '#/sorteio'; return ''; }
   const v = cxView(), T = v.totals, s = state.cx;
   const nav = `<div class="stepnav" style="margin:0 0 14px">
       <button aria-label="Mês anterior" data-act="cx-step" data-d="-1">${I.prev}</button>
@@ -1241,7 +1242,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 23.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 24.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================

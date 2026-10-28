@@ -100,6 +100,7 @@ class Store {
 
   async _initLocal() {
     this.mode = 'local';
+    this.authReady = true;
     let data = null;
     try { data = JSON.parse(localStorage.getItem(LS_DATA) || 'null'); } catch (e) { data = null; }
     // Sem nada salvo neste aparelho: mostra os dados oficiais publicados junto com o app (planilha).
@@ -144,6 +145,7 @@ class Store {
 
     let unsubMasters = null, unsubFin = null;
     authM.onAuthStateChanged(auth, u => {
+      this.authReady = true;
       this.user = u ? { uid: u.uid, name: u.displayName || '', email: u.email } : null;
       if (unsubMasters) { unsubMasters(); unsubMasters = null; this.masters = []; }
       if (unsubFin) { unsubFin(); unsubFin = null; this.finance = {}; }
