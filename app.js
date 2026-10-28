@@ -68,7 +68,7 @@ function avatar(p, size = '') {
 }
 
 // Vínculo do atleta com a pelada
-const TIPOS = { M: 'Mensalista', DG: 'Diarista do grupo', DN: 'Diarista novo' };
+const TIPOS = { M: 'Mensalista', DG: 'Diarista do Grupo', DN: 'Diarista' };
 const tipoOf = p => (p && TIPOS[p.tipo]) ? p.tipo : 'M';
 const flag = (p, cls = '') => p ? `<span class="flag t-${tipoOf(p)} ${cls}">${TIPOS[tipoOf(p)]}</span>` : '';
 
@@ -518,8 +518,8 @@ function vAtletas() {
       <button class="chip ${f === 'L' ? 'on' : ''}" data-act="album-filter" data-f="L">Linha</button>
       <button class="chip ${f === 'G' ? 'on' : ''}" data-act="album-filter" data-f="G">Goleiros</button>
       <button class="chip ${f === 'M' ? 'on' : ''}" data-act="album-filter" data-f="M">Mensalistas</button>
-      <button class="chip ${f === 'DG' ? 'on' : ''}" data-act="album-filter" data-f="DG">Diaristas do grupo</button>
-      <button class="chip ${f === 'DN' ? 'on' : ''}" data-act="album-filter" data-f="DN">Diaristas novos</button>
+      <button class="chip ${f === 'DG' ? 'on' : ''}" data-act="album-filter" data-f="DG">Diaristas do Grupo</button>
+      <button class="chip ${f === 'DN' ? 'on' : ''}" data-act="album-filter" data-f="DN">Diaristas</button>
     </div>` : ''}
     <div id="albumBody">${albumBody(act, off, card)}</div>`;
 }
@@ -831,7 +831,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 17.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 18.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1093,7 +1093,7 @@ function playerSheet(p) {
       </div></div>
     <div class="field"><label for="pfName">Nome</label><input class="input" id="pfName" required maxlength="40" value="${esc(p.name)}" placeholder="Nome do atleta"></div>
     <div class="field"><label for="pfNick">Apelido</label><input class="input" id="pfNick" maxlength="20" value="${esc(p.nick)}" placeholder="Como a galera chama"><span class="hint">Se preencher, o apelido aparece no lugar do nome.</span></div>
-    <div class="field"><span class="lab">Vínculo</span><div class="seg tipo-seg">${Object.entries(TIPOS).map(([k, l]) => `<button type="button" class="${tipo === k ? 'on' : ''}" data-pf="tipo" data-v="${k}">${l.replace('Diarista ', 'Diarista<br>')}</button>`).join('')}</div></div>
+    <div class="field"><span class="lab">Vínculo</span><div class="seg tipo-seg">${Object.entries(TIPOS).map(([k, l]) => `<button type="button" class="${tipo === k ? 'on' : ''}" data-pf="tipo" data-v="${k}">${l.replace('Diarista do ', 'Diarista<br>do ')}</button>`).join('')}</div></div>
     <div class="field"><span class="lab">Posição</span><div class="seg"><button type="button" class="${pos === 'L' ? 'on' : ''}" data-pf="pos" data-v="L">Linha</button><button type="button" class="${pos === 'G' ? 'on' : ''}" data-pf="pos" data-v="G">Goleiro</button></div></div>
     <div class="field"><label for="pfNum">Número da camisa</label><input class="input" id="pfNum" inputmode="numeric" maxlength="3" value="${esc(p.num)}" placeholder="Opcional"></div>
     <div class="field"><span class="lab">Nível para o sorteio</span><div class="level-pick">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="${n <= level ? 'on' : ''}" data-pf="level" data-v="${n}" aria-label="Nível ${n}">${n}</button>`).join('')}</div>
