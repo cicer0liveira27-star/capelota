@@ -1006,6 +1006,10 @@ function vAjustes() {
       ${M && store.deviceData ? `<div class="status" style="margin-top:12px"><i></i><span>Este aparelho tem dados salvos de antes do banco compartilhado (${store.deviceData.players.length} atletas, ${store.deviceData.rounds.length} registros), com as edições feitas aqui.</span></div>
         <div class="btn-row"><button class="btn primary" data-act="push-device">Enviar dados deste aparelho para o banco</button><button class="btn ghost" data-act="drop-device">Descartar</button></div>` : ''}
     </div>
+    <div class="panel"><h3>Planilha de estatísticas</h3>
+      <p>Baixa um Excel no mesmo formato da planilha da Capelota: uma aba por ano, o mês atual e uma aba por mês, mais as rodadas e os atletas, com tudo que está no app agora.</p>
+      <button class="btn primary" data-act="export-xlsx">Exportar planilha (.xlsx)</button>
+    </div>
     <div class="panel"><h3>Backup</h3>
       <p>Baixe um arquivo com todos os atletas, fotos e rodadas. Para restaurar, escolha um backup baixado antes: ele substitui os dados atuais.</p>
       <div class="btn-row">
@@ -1035,7 +1039,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 19.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 20.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1660,6 +1664,73 @@ function askFormat(title) {
   });
 }
 
+// ================= PLANILHA (só masters) =================
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('sem internet para gerar a planilha')); document.head.appendChild(s); });
+}
+const MONTH_TABS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+async function exportXlsx() {
+  if (!window.XLSX) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+  const X = window.XLSX;
+  toast('Montando a planilha…');
+  const S = store.settings;
+  const HEAD = ['Atleta', 'Gols', 'Assistências', 'G/A', 'V', 'E', 'D', 'Pontos', 'Partidas', 'Aproveitamento %', 'Títulos', 'Presenças', 'Total Pontos',
+    'Amarelos', 'Vermelhos', 'Jogos sem sofrer gol', 'Artilheiro da noite', 'Garçom da noite', 'Posição', 'Vínculo', 'No elenco'];
+  const sheetFor = per => {
+    const { totals: T } = C.aggregate(store.rounds, store.players, per, S);
+    const rows = store.players.filter(p => T[p.id]).map(p => {
+      const t = T[p.id], pts = t.w * 3 + t.d, games = t.w + t.d + t.l;
+      return [dn(p), t.g, t.a, t.g + t.a, t.w, t.d, t.l, pts, games, games ? pts / (games * 3) : 0, t.t, t.p, t.pts,
+        t.y, t.r, t.cs, t.art, t.gar, p.pos === 'G' ? 'Goleiro' : 'Linha', TIPOS[tipoOf(p)], p.active === false ? 'Não' : 'Sim'];
+    }).sort((x, y) => y[12] - x[12] || y[1] - x[1]);
+    const ws = X.utils.aoa_to_sheet([HEAD, ...rows]);
+    ws['!cols'] = HEAD.map((h, i) => ({ wch: i === 0 ? 22 : Math.max(8, h.length + 2) }));
+    ws['!autofilter'] = { ref: X.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: HEAD.length - 1 } }) };
+    for (let r = 1; r <= rows.length; r++) { const c = ws[X.utils.encode_cell({ r, c: 9 })]; if (c) c.z = '0%'; }
+    return ws;
+  };
+  const wb = X.utils.book_new();
+  const years = [...new Set(store.rounds.map(r => +r.date.slice(0, 4)))].sort((a, b) => b - a);
+  const cy = thisY(), cm = thisM();
+  years.forEach(y => X.utils.book_append_sheet(wb, sheetFor({ type: 'year', y }), String(y)));
+  X.utils.book_append_sheet(wb, sheetFor({ type: 'month', y: cy, m: cm }), 'Mês Atual');
+  if (years.length > 1) X.utils.book_append_sheet(wb, sheetFor({ type: 'all' }), 'Geral');
+  C.monthsWithRounds(store.rounds).forEach(({ y, m }) => {
+    const name = MONTH_TABS[m - 1] + (y === cy ? '' : ' ' + y);
+    X.utils.book_append_sheet(wb, sheetFor({ type: 'month', y, m }), name);
+  });
+  // Rodadas: uma linha por atleta em cada rodada (ou resumo de mês)
+  const RH = ['Data', 'Tipo', 'Atleta', 'Presenças', 'Gols', 'Assistências', 'V', 'E', 'D', 'Títulos', 'Amarelos', 'Vermelhos', 'Jogos sem sofrer gol', 'Time'];
+  const rr = [];
+  C.sortedRounds(store.rounds).forEach(r => {
+    const teamOf = {}; (r.teams || []).forEach(t => (t.ids || []).forEach(id => { teamOf[id] = t.name; }));
+    Object.entries(r.entries || {}).filter(([, e]) => e.p).forEach(([pid, e]) => {
+      rr.push([r.summary ? `${MONTH_TABS[+r.date.slice(5, 7) - 1]}/${r.date.slice(0, 4)}` : C.fmtDate(r.date), r.summary ? 'Resumo do mês' : 'Rodada',
+        dn(playerById(pid)), e.p || 0, e.g || 0, e.a || 0, e.w || 0, e.d || 0, e.l || 0, e.t || 0, e.y || 0, e.r || 0, e.cs || 0, teamOf[pid] || '']);
+    });
+  });
+  const wr = X.utils.aoa_to_sheet([RH, ...rr]);
+  wr['!cols'] = RH.map((h, i) => ({ wch: i === 2 ? 22 : Math.max(8, h.length + 2) }));
+  X.utils.book_append_sheet(wb, wr, 'Rodadas');
+  // Atletas
+  const AH = ['Atleta', 'Nome completo', 'Apelido', 'Camisa', 'Posição', 'Vínculo', 'Nível (sorteio)', 'No elenco', 'Comissão'];
+  const ar = store.players.slice().sort((x, y) => dn(x).localeCompare(dn(y))).map(p => [dn(p), p.name, p.nick || '', p.num || '', p.pos === 'G' ? 'Goleiro' : 'Linha', TIPOS[tipoOf(p)], p.level || 3, p.active === false ? 'Não' : 'Sim',
+    store.isPlayerMaster(p.id) ? (store.commission.find(m => m.playerId === p.id)?.founder ? 'Fundador' : 'Membro') : '']);
+  const wa = X.utils.aoa_to_sheet([AH, ...ar]); wa['!cols'] = AH.map((h, i) => ({ wch: i < 3 ? 22 : 14 }));
+  X.utils.book_append_sheet(wb, wa, 'Atletas');
+
+  const fname = `Estatisticas Capelota ${C.isoDate(now())}.xlsx`;
+  const out = X.write(wb, { bookType: 'xlsx', type: 'array' });
+  const file = new File([out], fname, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  if (/android|iphone|ipad/i.test(navigator.userAgent) && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'Estatísticas Capelota' }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const aEl = document.createElement('a'); aEl.href = URL.createObjectURL(file); aEl.download = fname; aEl.click();
+  setTimeout(() => URL.revokeObjectURL(aEl.href), 4000);
+  toast('Planilha baixada');
+}
+
 // ================= BACKUP =================
 function downloadBackup() {
   const data = store.exportAll();
@@ -1712,6 +1783,7 @@ const actions = {
   'logout': async () => { await store.logout(); toast('Você saiu do acesso master'); },
   'sheet-close': () => closeSheet(),
   'backup': () => downloadBackup(),
+  'export-xlsx': async el => { if (!store.isMaster) return; el.disabled = true; try { await exportXlsx(); } catch (e) { toast('Não consegui gerar a planilha: ' + e.message, true); } finally { el.disabled = false; } },
   'restore': () => { if (!store.isMaster) return loginSheet(); restoreBackup(); },
   'install': async () => { const p = state.installPrompt; if (!p) return; p.prompt(); await p.userChoice.catch(() => {}); state.installPrompt = null; render(); },
   'save-weights': async () => {

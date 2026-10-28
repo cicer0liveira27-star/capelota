@@ -1,6 +1,6 @@
 // Service worker do Capelota: deixa o app abrir sem internet.
 // Os dados do banco compartilhado têm cache próprio do Firebase; aqui só guardamos a "casca" do app.
-const VERSION = 'capelota-v19';
+const VERSION = 'capelota-v20';
 const SHELL = [
   './', './index.html', './style.css', './app.js', './store.js', './calc.js', './live.js', './firebase-config.js',
   './manifest.webmanifest', './icons/logo-256.png', './icons/logo-512.png', './icons/icon-192.png', './icons/favicon-64.png'
@@ -13,7 +13,7 @@ self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
-const CACHEABLE_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'www.gstatic.com'];
+const CACHEABLE_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'www.gstatic.com', 'cdnjs.cloudflare.com'];
 
 self.addEventListener('fetch', e => {
   const req = e.request;
