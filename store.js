@@ -66,7 +66,11 @@ class Store {
   }
 
   subscribe(fn) { this._subs.add(fn); return () => this._subs.delete(fn); }
-  _emit() { this.version++; this._subs.forEach(fn => { try { fn(); } catch (e) { console.error(e); } }); }
+  _emit() {
+    if (this.mode === 'cloud' && this.usingSeed && this._seedData && this._cloudEmpty && this._cloudEmpty()) {
+      this.players = this._seedData.players || []; this.rounds = this._seedData.rounds || [];
+    }
+    this.version++; this._subs.forEach(fn => { try { fn(); } catch (e) { console.error(e); } }); }
 
   get isMaster() { return !!this.user; }
   get ready() { return this.loaded.players && this.loaded.rounds; }
@@ -138,13 +142,24 @@ class Store {
       }, err => console.error(err));
       this._emit();
     });
+    // Enquanto o banco estiver vazio, mostra os dados da planilha publicados com o app (só leitura)
+    let seedP = null;
+    const seedIfEmpty = async () => {
+      if (this.players.length || this.rounds.length) { this.usingSeed = false; return; }
+      try { seedP = seedP || this.fetchSeed(); const sd = await seedP; if (!this.players.length && !this.rounds.length && this._cloudEmpty()) { this.usingSeed = true; this._seedData = sd; this._emit(); } } catch (e) {}
+    };
+    this._cloudEmpty = () => this._rawPlayers === 0 && this._rawRounds === 0;
     fsM.onSnapshot(fsM.collection(db, 'players'), snap => {
+      this._rawPlayers = snap.size;
       this.players = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-      this.loaded.players = true; this._emit();
+      if (snap.size) this.usingSeed = false;
+      this.loaded.players = true; this._emit(); seedIfEmpty();
     }, err => { console.error(err); this.loaded.players = true; this._emit(); });
     fsM.onSnapshot(fsM.collection(db, 'rounds'), snap => {
+      this._rawRounds = snap.size;
       this.rounds = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-      this.loaded.rounds = true; this._emit();
+      if (snap.size) this.usingSeed = false;
+      this.loaded.rounds = true; this._emit(); seedIfEmpty();
     }, err => { console.error(err); this.loaded.rounds = true; this._emit(); });
     fsM.onSnapshot(fsM.doc(db, 'settings', 'draw'), snap => {
       this.draw = snap.exists() ? snap.data() : null; this._emit();
@@ -181,7 +196,21 @@ class Store {
     if (this.mode === 'cloud') {
       const { auth, authM } = this.fb;
       try { await authM.signInWithEmailAndPassword(auth, d + EMAIL_DOMAIN, pass); }
-      catch (e) { throw this._fbError(e); }
+      catch (e) {
+        // Primeiro acesso do fundador: cria a conta dele no Firebase com a senha que ele digitou
+        const code = String(e?.code || '');
+        const founderHash = await pbkdf2(d + '|' + pass);
+        if (LOCAL_MASTERS.some(m => m.h === founderHash) && (code.includes('invalid-credential') || code.includes('user-not-found'))) {
+          try {
+            const cred = await authM.createUserWithEmailAndPassword(auth, d + EMAIL_DOMAIN, pass);
+            const m = LOCAL_MASTERS.find(x => x.h === founderHash);
+            await authM.updateProfile(cred.user, { displayName: m.name }).catch(() => {});
+            this.user = { ...this.user, name: m.name }; this._emit();
+            return;
+          } catch (e2) { throw this._fbError(String(e2?.code || '').includes('email-already-in-use') ? e : e2); }
+        }
+        throw this._fbError(e);
+      }
       return;
     }
     const h = await pbkdf2(d + '|' + pass);
