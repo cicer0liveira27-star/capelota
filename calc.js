@@ -53,6 +53,7 @@ export function sortedRounds(rounds) { return [...rounds].sort((a, b) => b.date.
 
 // Artilheiro(s) e garçom(ns) da noite: quem mais fez na rodada (empates dividem).
 export function nightAwards(round) {
+  if (round.summary) return { art: [], gar: [], maxG: 0, maxA: 0 };
   let mg = 0, ma = 0;
   const es = Object.entries(round.entries || {}).filter(([, e]) => e && e.p);
   es.forEach(([, e]) => { mg = Math.max(mg, e.g || 0); ma = Math.max(ma, e.a || 0); });
@@ -69,13 +70,39 @@ export function points(t, pos, w) {
 }
 
 export function games(t) { return t.w + t.d + t.l; }
+export function roundCount(rounds) { return rounds.reduce((s, r) => s + (r.summary ? (r.rounds || 1) : 1), 0); }
+
+// Pontuação da planilha da Capelota:
+// gols x 1100 / maior nº de gols + assist. x 850 / maior nº de assist. + aproveitamento x 1250 / melhor aproveitamento
+// + títulos x 250 + presenças x 100. Os "maiores" são do próprio período.
+// O melhor aproveitamento considera só quem foi a pelo menos metade das rodadas (como na planilha).
+// Goleiro: soma também jogos sem sofrer gol x 1100 / maior nº de jogos sem sofrer gol.
+function capelotaScores(totals, posOf) {
+  const L = Object.entries(totals);
+  if (!L.length) return;
+  const ap = t => games(t) ? (t.w * 3 + t.d) / (games(t) * 3) : 0;
+  const maxG = Math.max(1, ...L.map(([, t]) => t.g));
+  const maxA = Math.max(1, ...L.map(([, t]) => t.a));
+  const maxCs = Math.max(1, ...L.map(([, t]) => t.cs));
+  const maxP = Math.max(1, ...L.map(([, t]) => t.p));
+  const thr = Math.ceil(maxP / 2);
+  const regs = L.filter(([, t]) => t.p >= thr && games(t) > 0).map(([, t]) => ap(t));
+  const maxAp = Math.max(0.01, ...(regs.length ? regs : L.map(([, t]) => ap(t))));
+  for (const [pid, t] of L) {
+    let v = t.g * 1100 / maxG + t.a * 850 / maxA + ap(t) * 1250 / maxAp + t.t * 250 + t.p * 100;
+    if (posOf[pid] === 'G') v += t.cs * 1100 / maxCs;
+    t.pts = Math.round(v);
+  }
+}
 export function winRate(t) { const n = games(t); return n ? Math.round(((t.w * 3 + t.d) / (n * 3)) * 100) : null; }
 
 // Soma tudo no período. Retorna { totals: {pid: tot}, rounds: [...] }
-export function aggregate(rounds, players, per, w) {
+export function aggregate(rounds, players, per, settings) {
+  const w = settings.weights || settings;
+  const scoring = settings.weights ? (settings.scoring || 'capelota') : 'pesos';
   const posOf = Object.fromEntries(players.map(p => [p.id, p.pos]));
   const totals = {};
-  const list = sortedRounds(rounds.filter(r => inPeriod(r.date, per)));
+  const list = sortedRounds(rounds.filter(r => inPeriod(r.date, per) && !(per && per.type === 'round' && r.summary)));
   for (const r of list) {
     const aw = nightAwards(r);
     for (const [pid, e] of Object.entries(r.entries || {})) {
@@ -86,8 +113,9 @@ export function aggregate(rounds, players, per, w) {
       if (aw.gar.includes(pid)) t.gar++;
     }
   }
-  for (const [pid, t] of Object.entries(totals)) t.pts = points(t, posOf[pid] || 'L', w);
-  return { totals, rounds: list };
+  if (scoring === 'capelota') capelotaScores(totals, posOf);
+  else for (const [pid, t] of Object.entries(totals)) t.pts = points(t, posOf[pid] || 'L', w);
+  return { totals, rounds: list, nRounds: roundCount(list) };
 }
 
 const byPts = (T) => (a, b) => (T[b.id].pts - T[a.id].pts) || (T[b.id].g - T[a.id].g) || (T[b.id].a - T[a.id].a) || (T[b.id].p - T[a.id].p) || a.name.localeCompare(b.name);
@@ -101,13 +129,13 @@ function topGroup(list, T, key) {
 
 // Prêmios do mês: artilheiro, garçom, MVP, paredão (goleiro) e time ideal.
 export function monthAwards(rounds, players, y, m, settings) {
-  const { totals: T, rounds: rs } = aggregate(rounds, players, { type: 'month', y, m }, settings.weights);
+  const { totals: T, rounds: rs, nRounds } = aggregate(rounds, players, { type: 'month', y, m }, settings);
   const played = players.filter(p => T[p.id] && T[p.id].p > 0);
   const line = played.filter(p => p.pos !== 'G').sort(byPts(T));
   const gks = played.filter(p => p.pos === 'G').sort((a, b) => (T[b.id].cs - T[a.id].cs) || byPts(T)(a, b));
   const all = [...played].sort(byPts(T));
   return {
-    y, m, rounds: rs, totals: T,
+    y, m, rounds: rs, nRounds, totals: T,
     artilheiro: topGroup(played, T, 'g'),
     garcom: topGroup(played, T, 'a'),
     mvp: all[0] || null,

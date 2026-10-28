@@ -10,6 +10,7 @@ const EMAIL_DOMAIN = '@capelota.app';
 
 export const DEFAULT_SETTINGS = {
   perTeam: 5,
+  scoring: 'capelota', // 'capelota' = fórmula da planilha; 'pesos' = soma simples com os pesos abaixo
   weights: { goal: 3, assist: 2, win: 2, draw: 1, title: 3, presence: 1, yellow: -1, red: -3, cleanSheet: 3 }
 };
 
@@ -59,14 +60,23 @@ class Store {
     if (FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId) {
       try { await this._initCloud(); return; } catch (e) { console.error('Firebase falhou, usando modo local', e); }
     }
-    this._initLocal();
+    await this._initLocal();
   }
 
   // ---------- modo local ----------
-  _initLocal() {
+  async fetchSeed() {
+    const res = await fetch('data/seed.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error('Não encontrei os dados da planilha.');
+    return res.json();
+  }
+
+  async _initLocal() {
     this.mode = 'local';
     let data = null;
     try { data = JSON.parse(localStorage.getItem(LS_DATA) || 'null'); } catch (e) { data = null; }
+    // Sem nada salvo neste aparelho: mostra os dados oficiais publicados junto com o app (planilha).
+    this.usingSeed = false;
+    if (!data) { try { data = await this.fetchSeed(); this.usingSeed = true; } catch (e) { data = null; } }
     this.players = data?.players || [];
     this.rounds = data?.rounds || [];
     this.settings = normSettings(data?.settings);
@@ -75,6 +85,7 @@ class Store {
     this._emit();
   }
   _persistLocal() {
+    this.usingSeed = false;
     try {
       localStorage.setItem(LS_DATA, JSON.stringify({ players: this.players, rounds: this.rounds, settings: this.settings }));
     } catch (e) {
@@ -190,7 +201,7 @@ class Store {
   // ---------- rounds (id = data AAAA-MM-DD) ----------
   async saveRound(r, previousId) {
     this._requireMaster();
-    const data = { ...r, id: r.date, updatedAt: Date.now(), updatedBy: this.user?.name || '' };
+    const data = { ...r, id: r.id || r.date, updatedAt: Date.now(), updatedBy: this.user?.name || '' };
     if (this.mode === 'cloud') {
       const { db, fsM } = this.fb; const { id, ...rest } = data;
       if (previousId && previousId !== id) await this._cloudWrite(fsM.deleteDoc(fsM.doc(db, 'rounds', previousId)));
@@ -228,7 +239,7 @@ class Store {
       throw new Error('Esse arquivo não é um backup do Capelota.');
     }
     const players = data.players.filter(p => p && p.id && p.name);
-    const rounds = data.rounds.filter(r => r && r.date).map(r => ({ ...r, id: r.date }));
+    const rounds = data.rounds.filter(r => r && r.date).map(r => ({ ...r, id: r.id || r.date }));
     const settings = normSettings(data.settings);
     if (this.mode === 'cloud') {
       const { db, fsM } = this.fb;

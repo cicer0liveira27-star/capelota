@@ -168,7 +168,10 @@ store.subscribe(() => {
 });
 
 // ================= período =================
-function roundDates() { return C.sortedRounds(store.rounds).map(r => r.date); }
+function roundDates() { return C.sortedRounds(store.rounds.filter(r => !r.summary)).map(r => r.date); }
+const realRounds = () => store.rounds.filter(r => !r.summary);
+const roundById = id => store.rounds.find(r => r.id === id) || store.rounds.find(r => r.date === id && !r.summary);
+const roundLabel = r => r.summary ? `${C.MONTHS[+r.date.slice(5, 7) - 1]} (resumo)` : C.fmtDate(r.date, { year: false });
 
 function periodBar(key, types = ['round', 'month', 'year', 'all']) {
   const per = state.pers[key];
@@ -259,8 +262,7 @@ function leaders(T, key, filter = () => true) {
 function vInicio() {
   const per = state.pers.dash;
   if (per.type === 'round' && !per.date) per.date = roundDates()[0] || null;
-  const { totals: T, rounds } = C.aggregate(store.rounds, store.players, per, store.settings.weights);
-  const nR = rounds.length;
+  const { totals: T, rounds, nRounds: nR } = C.aggregate(store.rounds, store.players, per, store.settings);
   const sum = k => Object.values(T).reduce((s, t) => s + t[k], 0);
   const presAvg = nR ? Math.round(sum('p') / nR) : 0;
   const fab = store.isMaster ? `<a class="fab" href="#/lancar">${I.plus}Lançar rodada</a>` : '';
@@ -298,7 +300,7 @@ function vInicio() {
   let bottom = '';
   if (per.type === 'round') {
     const r = rounds[0];
-    bottom = r ? `<section class="sec"><div class="sec-head"><h2>Súmula</h2><a href="#/rodada/${r.date}">Abrir rodada</a></div>${roundSheet(r)}</section>` : '';
+    bottom = r ? `<section class="sec"><div class="sec-head"><h2>Súmula</h2><a href="#/rodada/${r.id}">Abrir rodada</a></div>${roundSheet(r)}</section>` : '';
   } else {
     const top = store.players.filter(p => T[p.id]).sort((a, b) => T[b.id].pts - T[a.id].pts || T[b.id].g - T[a.id].g).slice(0, 5);
     bottom = `
@@ -313,7 +315,7 @@ function vInicio() {
           </a>`).join('')}</div>` : `<div class="empty"><p>Nenhuma rodada nesse período.</p></div>`}
       </section>
       <section class="sec"><div class="sec-head"><h2>Rodadas</h2><span class="muted small">${nR} no período</span></div>
-        ${nR ? `<div class="rounds">${rounds.slice(0, 8).map(roundItem).join('')}</div>` : `<div class="empty"><p>Sem rodadas lançadas em ${esc(C.periodLabel(per))}.</p>${store.isMaster ? `<a class="btn primary" href="#/lancar">Lançar rodada</a>` : ''}</div>`}
+        ${nR ? `<div class="rounds">${rounds.slice(0, 10).map(roundItem).join('')}</div>` : `<div class="empty"><p>Sem rodadas lançadas em ${esc(C.periodLabel(per))}.</p>${store.isMaster ? `<a class="btn primary" href="#/lancar">Lançar rodada</a>` : ''}</div>`}
       </section>`;
   }
 
@@ -336,7 +338,15 @@ function roundItem(r) {
   const goals = es.reduce((s, [, e]) => s + (e.g || 0), 0);
   const aw = C.nightAwards(r);
   const art = aw.art.map(playerById).filter(Boolean);
-  return `<a class="rd" href="#/rodada/${r.date}">
+  if (r.summary) {
+    const top = es.slice().sort((x, y) => (y[1].g || 0) - (x[1].g || 0))[0];
+    return `<a class="rd" href="#/rodada/${r.id}">
+    <span class="day"><b style="font-size:22px">${C.MONTHS_SHORT[d.getMonth()]}</b><span>resumo</span></span>
+    <span class="info"><strong>${r.rounds} rodadas, ${goals} gols</strong><br>${top && top[1].g ? `Artilheiro: ${esc(dn(playerById(top[0])))} (${top[1].g})` : 'Resumo da planilha'}</span>
+    <span class="ico" style="color:var(--texto-3)">${I.next.replace('<svg', '<svg style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2"')}</span>
+  </a>`;
+  }
+  return `<a class="rd" href="#/rodada/${r.id}">
     <span class="day"><b>${String(d.getDate()).padStart(2, '0')}</b><span>${C.MONTHS_SHORT[d.getMonth()]}</span></span>
     <span class="info"><strong>${es.length} presentes, ${goals} gols</strong><br>${art.length ? `Artilheiro: ${art.map(p => esc(dn(p))).join(', ')} (${aw.maxG})` : 'Sem gols registrados'}</span>
     <span class="ico" style="color:var(--texto-3)">${I.next.replace('<svg', '<svg style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2"')}</span>
@@ -350,20 +360,20 @@ function roundSheet(r) {
   const rowFor = ([pid, e]) => {
     const p = playerById(pid);
     const badges = [
-      e.t ? '<span class="badge cream">Campeão</span>' : '',
+      e.t ? `<span class="badge cream">${e.t > 1 ? e.t + ' títulos' : 'Campeão'}</span>` : '',
       aw.art.includes(pid) ? '<span class="badge">Artilheiro</span>' : '',
       aw.gar.includes(pid) ? '<span class="badge blue">Garçom</span>' : ''
     ].join('');
     const isG = p?.pos === 'G';
     const line = isG
       ? `<span><b>${e.g || 0}</b> G</span><span><b>${e.a || 0}</b> A</span><span><b>${e.cs || 0}</b> SG</span>`
-      : `<span><b>${e.g || 0}</b> G</span><span><b>${e.a || 0}</b> A</span><span><b>${e.w || 0}</b>V <b>${e.d || 0}</b>E <b>${e.l || 0}</b>D</span>${e.y ? `<span><span class="card-y"></span>${e.y}</span>` : ''}${e.r ? `<span><span class="card-r"></span>${e.r}</span>` : ''}`;
-    return `<a class="st-row" href="${p ? '#/atleta/' + esc(pid) : '#/rodada/' + r.date}">${avatar(p, 's')}
+      : `${r.summary ? `<span><b>${e.p}</b> pres.</span>` : ''}<span><b>${e.g || 0}</b> G</span><span><b>${e.a || 0}</b> A</span><span><b>${e.w || 0}</b>V <b>${e.d || 0}</b>E <b>${e.l || 0}</b>D</span>${e.y ? `<span><span class="card-y"></span>${e.y}</span>` : ''}${e.r ? `<span><span class="card-r"></span>${e.r}</span>` : ''}`;
+    return `<a class="st-row" href="${p ? '#/atleta/' + esc(pid) : '#/rodada/' + r.id}">${avatar(p, 's')}
       <span class="nm">${esc(dn(p))}${isG ? '<small>Goleiro</small>' : ''}</span>
       <span class="line">${badges}${line}</span></a>`;
   };
   if (!present.length) return `<div class="empty"><p>Ninguém marcado como presente.</p></div>`;
-  const sortFn = (a, b) => ((b[1].g || 0) - (a[1].g || 0)) || ((b[1].a || 0) - (a[1].a || 0)) || dn(playerById(a[0])).localeCompare(dn(playerById(b[0])));
+  const sortFn = (a, b) => (r.summary ? ((b[1].p || 0) - (a[1].p || 0)) : 0) || ((b[1].g || 0) - (a[1].g || 0)) || ((b[1].a || 0) - (a[1].a || 0)) || dn(playerById(a[0])).localeCompare(dn(playerById(b[0])));
   if (r.teams && r.teams.length) {
     const inTeam = new Set(r.teams.flatMap(t => t.ids || []));
     let html = r.teams.map((t, i) => {
@@ -381,12 +391,20 @@ function roundSheet(r) {
     + (gk.length ? `<div class="group-title">Goleiros</div><div class="sheet-table">${gk.map(rowFor).join('')}</div>` : '');
 }
 
-function vRodada(date) {
-  const r = store.rounds.find(x => x.date === date);
+function vRodada(id) {
+  const r = roundById(id);
   if (!r) return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Rodada não encontrada</h3><p>Ela pode ter sido apagada.</p></div>`;
   const es = Object.values(r.entries || {}).filter(e => e.p);
   const goals = es.reduce((s, e) => s + (e.g || 0), 0);
   const d = C.parseDate(r.date);
+  if (r.summary) {
+    return `<a class="back" href="#/inicio">${I.back}Início</a>
+    <div class="page-head"><div><h1>${C.MONTHS[d.getMonth()]} ${d.getFullYear()}</h1><p>Resumo do mês importado da planilha: os números de cada atleta somados nas ${r.rounds} rodadas.</p></div></div>
+    <div class="kpis"><div class="kpi"><b>${r.rounds}</b><span>Rodadas</span></div><div class="kpi"><b>${es.length}</b><span>Atletas</span></div>
+      <div class="kpi"><b>${goals}</b><span>Gols</span></div><div class="kpi"><b>${es.reduce((s, e) => s + (e.a || 0), 0)}</b><span>Assist.</span></div></div>
+    <section class="sec">${roundSheet(r)}</section>
+    ${store.isMaster ? `<div class="btn-row sec"><button class="btn danger" data-act="round-del" data-date="${r.id}">Apagar resumo</button></div>` : ''}`;
+  }
   return `<a class="back" href="#/inicio">${I.back}Início</a>
     <div class="page-head"><div><h1>Rodada de ${C.fmtDate(r.date, { year: false })}</h1>
     <p>${['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][d.getDay()]}, ${d.getDate()} de ${C.MONTHS[d.getMonth()].toLowerCase()} de ${d.getFullYear()}</p></div></div>
@@ -405,7 +423,7 @@ function vRodada(date) {
 function vRanking() {
   const per = state.pers.rank;
   if (per.type === 'round' && !per.date) per.date = roundDates()[0] || null;
-  const { totals: T } = C.aggregate(store.rounds, store.players, per, store.settings.weights);
+  const { totals: T } = C.aggregate(store.rounds, store.players, per, store.settings);
   const g = state.rankGroup;
   const stats = g === 'G' ? STAT_G : STAT_L;
   if (!stats.some(s => s.k === state.rankStat)) state.rankStat = 'pts';
@@ -438,12 +456,13 @@ function vRanking() {
 
 function pointsHint() {
   const w = store.settings.weights;
+  if ((store.settings.scoring || 'capelota') === 'capelota') return 'Pontos da planilha da Capelota: gols × 1100 ÷ artilheiro do período, assistências × 850 ÷ maior garçom, aproveitamento × 1250 ÷ melhor aproveitamento, mais 250 por título e 100 por presença.';
   return `Pontos da linha: gol ${w.goal}, assistência ${w.assist}, vitória ${w.win}, empate ${w.draw}, título ${w.title}, presença ${w.presence}, amarelo ${w.yellow}, vermelho ${w.red}. Goleiro: jogo sem sofrer gol ${w.cleanSheet}, mais gols, assistências e presença.`;
 }
 
 // ================= ATLETAS (álbum) =================
 function vAtletas() {
-  const { totals: T } = C.aggregate(store.rounds, store.players, { type: 'year', y: thisY() }, store.settings.weights);
+  const { totals: T } = C.aggregate(store.rounds, store.players, { type: 'year', y: thisY() }, store.settings);
   const q = state.search.trim().toLowerCase();
   const f = state.albumFilter;
   const list = store.players
@@ -473,7 +492,7 @@ function vAtleta(id) {
   const p = playerById(id);
   if (!p) return `<a class="back" href="#/atletas">${I.back}Atletas</a><div class="empty"><h3>Atleta não encontrado</h3></div>`;
   const per = state.pers.prof;
-  const w = store.settings.weights;
+  const w = store.settings;
   const { totals: T } = C.aggregate(store.rounds, store.players, per, w);
   const t = T[p.id] || C.zero();
   const { totals: TA } = C.aggregate(store.rounds, store.players, { type: 'all' }, w);
@@ -515,7 +534,7 @@ function vAtleta(id) {
         <div class="facts">
           <span class="pill ${isG ? '' : 'red'}">${isG ? 'Goleiro' : 'Linha'}</span>
           ${p.num ? `<span class="pill">Camisa ${esc(p.num)}</span>` : ''}
-          <span class="pill">${ta.p} ${ta.p === 1 ? 'jogo' : 'jogos'}</span>
+          <span class="pill">${ta.p} ${ta.p === 1 ? 'presença' : 'presenças'}</span>
           ${store.isMaster ? `<span class="pill" title="Nível para o sorteio (só masters veem)"><span class="stars">${'★'.repeat(level)}</span>${'☆'.repeat(5 - level)}</span>` : ''}
           ${p.active === false ? `<span class="pill">Fora do elenco</span>` : ''}
         </div>
@@ -535,8 +554,8 @@ function vAtleta(id) {
     <section class="sec"><div class="sec-head"><h2>Últimas rodadas</h2></div>
       ${hist.length ? `<div class="sheet-table">${hist.map(r => {
         const e = r.entries[p.id]; const aw = C.nightAwards(r);
-        return `<a class="st-row hist" href="#/rodada/${r.date}"><span class="num" style="font-size:20px">${C.fmtDate(r.date, { year: false })}</span>
-          <span class="nm">${e.t ? '<span class="badge cream">Campeão</span> ' : ''}${aw.art.includes(p.id) ? '<span class="badge">Artilheiro</span> ' : ''}${aw.gar.includes(p.id) ? '<span class="badge blue">Garçom</span>' : ''}</span>
+        return `<a class="st-row hist" href="#/rodada/${r.id}"><span class="num" style="font-size:${r.summary ? 17 : 20}px">${r.summary ? C.MONTHS_SHORT[+r.date.slice(5, 7) - 1] : C.fmtDate(r.date, { year: false })}</span>
+          <span class="nm">${r.summary ? `<span class="badge blue">${e.p} pres.</span> ` : ''}${e.t ? `<span class="badge cream">${e.t > 1 ? e.t + ' títulos' : 'Campeão'}</span> ` : ''}${aw.art.includes(p.id) ? '<span class="badge">Artilheiro</span> ' : ''}${aw.gar.includes(p.id) ? '<span class="badge blue">Garçom</span>' : ''}</span>
           <span class="line">${isG ? `<span><b>${e.cs || 0}</b> SG</span>` : `<span><b>${e.w || 0}</b>V <b>${e.d || 0}</b>E <b>${e.l || 0}</b>D</span>`}<span><b>${e.g || 0}</b> G</span><span><b>${e.a || 0}</b> A</span></span></a>`;
       }).join('')}</div>` : `<div class="empty"><p>Nenhuma rodada ainda.</p></div>`}
     </section>`;
@@ -631,15 +650,15 @@ function vPremios() {
       ${figurinha(mvp, { link: false })}
       <div><div class="k">Craque do mês</div><h2>${esc(dn(mvp))}</h2>
         <div class="pts">${tm.pts}<small> pts</small></div>
-        <div class="line">${mvp.pos === 'G' ? `<span class="pill">${tm.cs} sem sofrer</span>` : `<span class="pill">${tm.g} gols</span><span class="pill">${tm.a} assist.</span>`}<span class="pill">${tm.p}/${A.rounds.length} presenças</span></div>
+        <div class="line">${mvp.pos === 'G' ? `<span class="pill">${tm.cs} sem sofrer</span>` : `<span class="pill">${tm.g} gols</span><span class="pill">${tm.a} assist.</span>`}<span class="pill">${tm.p}/${A.nRounds} presenças</span></div>
       </div></a>`;
   const val = (list, k) => list.length ? T[list[0].id][k] : 0;
   const hls = `<div class="highlights sec">
     ${hlCard('Artilheiro do mês', I.ball, A.artilheiro, val(A.artilheiro, 'g'), 'gols')}
     ${hlCard('Garçom do mês', I.pass, A.garcom, val(A.garcom, 'a'), 'assist.')}
     ${hlCard('Paredão do mês', I.glove, A.paredao ? [A.paredao] : [], A.paredao ? T[A.paredao.id].cs : 0, 'sem sofrer')}
-    <div class="hl"><div class="lbl">${I.trophy}Rodadas no mês</div><div class="val">${A.rounds.length}</div>
-      <div class="who" style="color:var(--texto-2);font-size:13.5px">${A.rounds.map(r => C.fmtDate(r.date, { year: false })).reverse().join(', ')}</div></div>
+    <div class="hl"><div class="lbl">${I.trophy}Rodadas no mês</div><div class="val">${A.nRounds}</div>
+      <div class="who" style="color:var(--texto-2);font-size:13.5px">${A.rounds.map(r => r.summary ? 'Resumo da planilha' : C.fmtDate(r.date, { year: false })).reverse().join(', ')}</div></div>
   </div>`;
 
   const line = A.time.line;
@@ -673,6 +692,7 @@ function vAjustes() {
   const M = store.isMaster;
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const sc = store.settings.scoring || 'capelota';
   const wf = (k, l) => `<label>${l}<input type="number" inputmode="numeric" step="1" data-w="${k}" value="${w[k]}" ${M ? '' : 'disabled'}></label>`;
   return `<div class="page-head"><div><h1>Ajustes</h1></div></div>
     <div class="panel"><h3>Acesso master</h3>
@@ -685,7 +705,8 @@ function vAjustes() {
       ${store.mode === 'cloud'
         ? `<div class="status ok"><i></i><span>Banco compartilhado ligado. Todo mundo que abre o app vê os mesmos números, em tempo real.</span></div>`
         : `<div class="status"><i></i><span>Modo local: os dados ficam só neste aparelho. Para a galera toda acompanhar, ligue o banco compartilhado (passo a passo no README do projeto).</span></div>`}
-      <p>${store.players.length} atletas e ${store.rounds.length} rodadas guardados.</p>
+      <p>${store.players.length} atletas e ${C.roundCount(store.rounds)} rodadas guardados${store.usingSeed ? ', vindos da planilha oficial publicada com o app' : ''}.</p>
+      ${M ? `<button class="btn" data-act="load-seed">Carregar dados da planilha</button>` : ''}
     </div>
     <div class="panel"><h3>Backup</h3>
       <p>Baixe um arquivo com todos os atletas, fotos e rodadas. Para restaurar, escolha um backup baixado antes: ele substitui os dados atuais.</p>
@@ -697,12 +718,18 @@ function vAjustes() {
     </div>
     <div class="panel"><h3>Pontuação e time ideal</h3>
       <p>Os pontos decidem o craque, o ranking geral e o time ideal do mês.</p>
-      <div class="weights">
+      <div class="seg" style="margin-bottom:12px">
+        <button class="${sc === 'capelota' ? 'on' : ''}" data-act="scoring" data-v="capelota" ${M ? '' : 'disabled'}>Fórmula da planilha</button>
+        <button class="${sc === 'pesos' ? 'on' : ''}" data-act="scoring" data-v="pesos" ${M ? '' : 'disabled'}>Pesos simples</button>
+      </div>
+      <p class="hint" style="margin-bottom:12px">${pointsHint()}</p>
+      <div class="weights" ${sc === 'capelota' ? 'hidden' : ''}>
         ${wf('goal', 'Gol')}${wf('assist', 'Assistência')}${wf('win', 'Vitória')}${wf('draw', 'Empate')}
         ${wf('title', 'Título')}${wf('presence', 'Presença')}${wf('yellow', 'Amarelo')}${wf('red', 'Vermelho')}
         ${wf('cleanSheet', 'Sem sofrer gol')}
         <label>Linha no time ideal<input type="number" inputmode="numeric" min="1" max="10" data-per value="${store.settings.perTeam}" ${M ? '' : 'disabled'}></label>
       </div>
+      <div class="weights" ${sc === 'capelota' ? '' : 'hidden'}><label>Linha no time ideal<input type="number" inputmode="numeric" min="1" max="10" data-per2 value="${store.settings.perTeam}" ${M ? '' : 'disabled'}></label></div>
       ${M ? '<button class="btn primary block" style="margin-top:14px" data-act="save-weights">Salvar pontuação</button>' : ''}
     </div>
     ${standalone ? '' : `<div class="panel"><h3>Colocar na tela inicial</h3>
@@ -715,7 +742,7 @@ function vAjustes() {
 
 // ================= EDITOR DE RODADA =================
 function newEditor(date, teams) {
-  const ex = store.rounds.find(r => r.date === date);
+  const ex = store.rounds.find(r => r.date === date && !r.summary);
   if (ex && !teams) {
     return { date, origId: ex.id, entries: JSON.parse(JSON.stringify(ex.entries || {})), teams: ex.teams ? JSON.parse(JSON.stringify(ex.teams)) : null, note: ex.note || '' };
   }
@@ -775,6 +802,9 @@ function vLancar(date) {
   if (!store.isMaster) {
     return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Só masters lançam rodadas</h3><p>Entre com CPF e senha de master para continuar.</p><button class="btn primary" data-act="login">Entrar como master</button></div>`;
   }
+  if (date && store.rounds.find(r => r.id === date)?.summary) {
+    return `<a class="back" href="#/rodada/${esc(date)}">${I.back}Voltar</a><div class="empty"><h3>Resumo do mês não é editável aqui</h3><p>Ele veio da planilha. Para corrigir, ajuste a planilha e peça para importar de novo, ou apague o resumo.</p></div>`;
+  }
   if (!state.editor || (date && state.editor.date !== date && state.editor.origId !== date)) state.editor = newEditor(date || defaultRoundDate());
   const ed = state.editor;
   view.classList.add('has-savebar');
@@ -792,7 +822,7 @@ function vLancar(date) {
     const gk = pool.filter(p => p.pos === 'G').sort(byName), ln = pool.filter(p => p.pos !== 'G').sort(byName);
     body = (ln.length ? `<div class="group-title">Linha</div>${ln.map(edPlayer).join('')}` : '') + (gk.length ? `<div class="group-title">Goleiros</div>${gk.map(edPlayer).join('')}` : '');
   }
-  const exists = store.rounds.find(r => r.date === ed.date);
+  const exists = store.rounds.find(r => r.date === ed.date && !r.summary);
   return `<a class="back" href="#/inicio">${I.back}Início</a>
     <div class="page-head"><div><h1>${ed.origId ? 'Editar rodada' : 'Lançar rodada'}</h1><p>Marque quem jogou e some os números de cada um.</p></div></div>
     <div class="field"><label for="edDate">Data da rodada</label><input class="input" type="date" id="edDate" value="${ed.date}" data-input="ed-date">
@@ -1019,7 +1049,7 @@ async function shareCanvas(c, name) {
 async function sharePlayer(id) {
   const p = playerById(id); if (!p) return;
   const per = state.pers.prof;
-  const { totals: T } = C.aggregate(store.rounds, store.players, per, store.settings.weights);
+  const { totals: T } = C.aggregate(store.rounds, store.players, per, store.settings);
   const t = T[p.id] || C.zero();
   const { c, x } = await cardBase(C.periodLabel(per), 'Terças, 19h');
   await drawSticker(x, p, 540, 650, 600, 760, -0.045);
@@ -1112,8 +1142,23 @@ const actions = {
   'save-weights': async () => {
     const wts = { ...store.settings.weights };
     $$('[data-w]').forEach(i => { const v = parseInt(i.value, 10); if (!isNaN(v)) wts[i.dataset.w] = v; });
-    const per = Math.min(10, Math.max(1, parseInt($('[data-per]').value, 10) || 5));
-    try { await store.saveSettings({ ...store.settings, weights: wts, perTeam: per }); toast('Pontuação salva'); } catch (e) { toast(e.message, true); }
+    const sc = state.scoringDraft || store.settings.scoring || 'capelota';
+    const perIn = sc === 'capelota' ? $('[data-per2]') : $('[data-per]');
+    const per = Math.min(10, Math.max(1, parseInt(perIn.value, 10) || 5));
+    try { await store.saveSettings({ ...store.settings, weights: wts, perTeam: per, scoring: sc }); state.scoringDraft = null; toast('Pontuação salva'); } catch (e) { toast(e.message, true); }
+  },
+  'scoring': el => {
+    state.scoringDraft = el.dataset.v;
+    $$('[data-act=scoring]').forEach(b => b.classList.toggle('on', b === el));
+    const ws = $$('.weights'); ws[0].hidden = el.dataset.v === 'capelota'; ws[1].hidden = el.dataset.v !== 'capelota';
+  },
+  'load-seed': async () => {
+    try {
+      const data = await store.fetchSeed();
+      const ok = await confirmSheet('Carregar dados da planilha?', `São ${data.players.length} atletas e o resumo de ${data.rounds.length} meses de 2026. Isso substitui os dados atuais${store.mode === 'cloud' ? ' para todo mundo' : ' deste aparelho'}.`, 'Carregar dados', false);
+      if (!ok) return;
+      const r = await store.importAll(data); toast(`Dados da planilha carregados: ${r.players} atletas`);
+    } catch (e) { toast(e.message, true); }
   },
   'aw-step': el => {
     let { y, m } = state.awards; m += +el.dataset.d;
@@ -1127,7 +1172,7 @@ const actions = {
   'draw-all': () => { store.players.filter(p => p.active !== false).forEach(p => state.draw.sel.add(p.id)); saveDraw(); render(); },
   'draw-none': () => { state.draw.sel.clear(); state.draw.result = null; saveDraw(); render(); },
   'draw-last': () => {
-    const r = C.sortedRounds(store.rounds)[0];
+    const r = C.sortedRounds(realRounds())[0] || C.sortedRounds(store.rounds)[0];
     if (!r) { toast('Ainda não tem rodada lançada', true); return; }
     state.draw.sel = new Set(Object.keys(r.entries || {}).filter(id => r.entries[id].p && playerById(id)?.active !== false));
     saveDraw(); render();
@@ -1198,7 +1243,7 @@ const actions = {
       entries[id] = clean;
     });
     if (!Object.keys(entries).length) { toast('Marque pelo menos um atleta presente', true); return; }
-    const exists = store.rounds.find(r => r.date === ed.date);
+    const exists = store.rounds.find(r => r.date === ed.date && !r.summary);
     if (exists && exists.id !== ed.origId) {
       const ok = await confirmSheet('Substituir rodada?', `Já existe uma rodada em ${C.fmtDate(ed.date)}. Salvar agora troca os números dela por estes.`, 'Substituir');
       if (!ok) return;
@@ -1217,9 +1262,10 @@ const actions = {
   },
   'round-del': async el => {
     const date = el.dataset.date;
-    const ok = await confirmSheet('Apagar rodada?', `A rodada de ${C.fmtDate(date)} e todos os números dela somem das estatísticas.`, 'Apagar rodada');
+    const rr0 = roundById(date);
+    const ok = await confirmSheet(rr0?.summary ? 'Apagar resumo do mês?' : 'Apagar rodada?', `${rr0?.summary ? 'O resumo de ' + C.MONTHS[+rr0.date.slice(5, 7) - 1].toLowerCase() : 'A rodada de ' + C.fmtDate(rr0?.date || date)} e todos os números somem das estatísticas.`, 'Apagar');
     if (!ok) return;
-    try { await store.deleteRound(date); state.editor = null; toast('Rodada apagada'); location.hash = '#/inicio'; } catch (e) { toast(e.message, true); }
+    try { await store.deleteRound(date); state.editor = null; toast('Apagado'); location.hash = '#/inicio'; } catch (e) { toast(e.message, true); }
   }
 };
 
@@ -1235,7 +1281,7 @@ document.addEventListener('input', ev => {
   if (k === 'search') {
     state.search = ev.target.value;
     // atualiza só o álbum para não perder o foco
-    const { totals: T } = C.aggregate(store.rounds, store.players, { type: 'year', y: thisY() }, store.settings.weights);
+    const { totals: T } = C.aggregate(store.rounds, store.players, { type: 'year', y: thisY() }, store.settings);
     const q = state.search.trim().toLowerCase(), f = state.albumFilter;
     const list = store.players.filter(p => f === 'all' || (f === 'G' ? p.pos === 'G' : p.pos !== 'G'))
       .filter(p => !q || (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q)).sort((a, b) => dn(a).localeCompare(dn(b)));
@@ -1246,7 +1292,7 @@ document.addEventListener('input', ev => {
 document.addEventListener('change', ev => {
   if (ev.target.dataset?.input === 'ed-date' && state.editor) {
     const d = ev.target.value; if (!d) return;
-    const ex = store.rounds.find(r => r.date === d);
+    const ex = store.rounds.find(r => r.date === d && !r.summary);
     if (ex && ex.id !== state.editor.origId && !state.editor.teams && !Object.values(state.editor.entries).some(e => e.p)) {
       state.editor = newEditor(d); toast(`Abri a rodada de ${C.fmtDate(d)} para editar`);
     } else state.editor.date = d;
