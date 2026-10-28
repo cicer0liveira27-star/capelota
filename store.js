@@ -68,9 +68,15 @@ class Store {
   }
 
   subscribe(fn) { this._subs.add(fn); return () => this._subs.delete(fn); }
+  _mergedSeedPlayers() {
+    const cloud = this._cloudPlayers || [];
+    const byId = new Map((this._seedData?.players || []).map(p => [p.id, p]));
+    cloud.forEach(p => byId.set(p.id, { ...(byId.get(p.id) || {}), ...p }));
+    return [...byId.values()];
+  }
   _emit() {
     if (this.mode === 'cloud' && this.usingSeed && this._seedData && this._cloudEmpty && this._cloudEmpty()) {
-      this.players = this._seedData.players || []; this.rounds = this._seedData.rounds || [];
+      this.players = this._mergedSeedPlayers(); this.rounds = this._seedData.rounds || [];
     }
     this.version++; this._subs.forEach(fn => { try { fn(); } catch (e) { console.error(e); } }); }
 
@@ -146,15 +152,17 @@ class Store {
     });
     // Enquanto o banco estiver vazio, mostra os dados da planilha publicados com o app (só leitura)
     let seedP = null;
+    // Banco sem nenhuma estatística ainda: completa com a planilha (o que já está no banco tem prioridade)
     const seedIfEmpty = async () => {
-      if (this.players.length || this.rounds.length) { this.usingSeed = false; return; }
-      try { seedP = seedP || this.fetchSeed(); const sd = await seedP; if (!this.players.length && !this.rounds.length && this._cloudEmpty()) { this.usingSeed = true; this._seedData = sd; this._emit(); } } catch (e) {}
+      if (!this.loaded.players || !this.loaded.rounds) return;
+      if (!this._cloudEmpty()) { if (this.usingSeed) { this.usingSeed = false; this._emit(); } return; }
+      try { seedP = seedP || this.fetchSeed(); const sd = await seedP; if (this._cloudEmpty()) { this.usingSeed = true; this._seedData = sd; this._emit(); } } catch (e) {}
     };
-    this._cloudEmpty = () => this._rawPlayers === 0 && this._rawRounds === 0;
+    this._cloudEmpty = () => this._rawRounds === 0;
     fsM.onSnapshot(fsM.collection(db, 'players'), snap => {
       this._rawPlayers = snap.size;
-      this.players = snap.docs.map(d => ({ ...d.data(), id: d.id }));
-      if (snap.size) this.usingSeed = false;
+      this._cloudPlayers = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      this.players = this._cloudPlayers;
       this.loaded.players = true; this._emit(); seedIfEmpty();
     }, err => { console.error(err); this.loaded.players = true; this._emit(); });
     fsM.onSnapshot(fsM.collection(db, 'rounds'), snap => {
@@ -319,7 +327,7 @@ class Store {
     if (this._basing) return this._basing;
     this._basing = (async () => {
       const sd = this._seedData;
-      await this.importAll({ app: 'capelota', version: 1, players: sd.players, rounds: sd.rounds, settings: sd.settings });
+      await this.importAll({ app: 'capelota', version: 1, players: this._mergedSeedPlayers(), rounds: sd.rounds, settings: sd.settings });
       this.usingSeed = false; this._seedData = null;
     })();
     try { await this._basing; } finally { this._basing = null; }

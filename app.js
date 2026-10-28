@@ -275,7 +275,7 @@ function hlCard(label, icon, players, value, unit, extra = '') {
   }
   const list = players.slice(0, 3);
   const names = players.length > 2 ? `${esc(dn(players[0]))} e mais ${players.length - 1}` : players.map(p => esc(dn(p))).join(' e ');
-  const href = players.length === 1 ? `href="#/atleta/${esc(players[0].id)}"` : '';
+  const href = players.length === 1 && store.isMaster ? `href="#/atleta/${esc(players[0].id)}"` : '';
   const tag = href ? 'a' : 'div';
   return `<${tag} class="hl ${extra}" ${href}>
     <div class="lbl">${icon}${label}</div>
@@ -456,7 +456,6 @@ function vRodada(id) {
 // ================= RANKING =================
 function vRanking() {
   const per = state.pers.rank;
-  if (!store.isMaster && per.type === 'all') setPerType('rank', 'month');
   if (per.type === 'round' && !per.date) per.date = roundDates()[0] || null;
   const { totals: T } = C.aggregate(store.rounds, store.players, per, store.settings);
   const g = state.rankGroup;
@@ -479,8 +478,8 @@ function vRanking() {
       <span><span class="nm">${esc(dn(p))}</span><br><span class="sub">${sub}</span></span>
       <span class="v" style="${k === 'cards' ? 'font-size:18px' : ''}">${statShow(t, k)}</span></${store.isMaster ? 'a' : 'div'}>`;
   }).join('');
-  return `<div class="page-head"><div><h1>Ranking</h1><p>${store.isMaster ? 'Toque num atleta para ver o perfil.' : 'Por rodada, mês ou ano.'}</p></div></div>
-    ${periodBar('rank', store.isMaster ? ['round', 'month', 'year', 'all'] : ['round', 'month', 'year'])}
+  return `<div class="page-head"><div><h1>Ranking</h1><p>${store.isMaster ? 'Toque num atleta para ver o perfil.' : 'Por rodada, mês, ano ou desde o começo.'}</p></div></div>
+    ${periodBar('rank')}
     ${store.isMaster && per.type === 'month' ? `<button class="btn sm block" style="margin:-6px 0 14px" data-act="edit-month" data-y="${per.y}" data-m="${per.m}">${I.edit}Editar estatísticas de ${C.MONTHS[per.m - 1].toLowerCase()}</button>` : ''}
     ${store.isMaster && per.type === 'round' && per.date ? `<a class="btn sm block" style="margin:-6px 0 14px" href="#/lancar/${per.date}">${I.edit}Editar esta rodada</a>` : ''}
     <div class="seg" style="margin-bottom:12px">
@@ -711,7 +710,7 @@ function vPremios() {
       <div class="lbl">${C.MONTHS[m - 1]} ${y}</div>
       <button aria-label="Próximo mês" data-act="aw-step" data-d="1" ${nextOff ? 'disabled' : ''}>${I.next}</button></div>`;
   const head = `<div class="page-head"><div><h1>${store.isMaster ? 'Prêmios do mês' : 'Craque do mês'}</h1><p>Calculados sozinhos a partir das rodadas.${isCur ? ' O mês ainda está rolando.' : ''}</p></div></div>`;
-  if (!A.rounds.length) return head + nav + `<div class="empty"><img src="icons/logo-256.png" alt=""><h3>Sem rodadas em ${C.MONTHS[m - 1].toLowerCase()}</h3><p>Os prêmios aparecem assim que a primeira rodada do mês for lançada.</p></div>` + (store.isMaster ? yearList(y) : '');
+  if (!A.rounds.length) return head + nav + `<div class="empty"><img src="icons/logo-256.png" alt=""><h3>Sem rodadas em ${C.MONTHS[m - 1].toLowerCase()}</h3><p>Os prêmios aparecem assim que a primeira rodada do mês for lançada.</p></div>` + yearList(y);
 
   const mvp = A.mvp; const tm = T[mvp.id];
   const M = store.isMaster;
@@ -741,9 +740,10 @@ function vPremios() {
   </div>`;
 
   if (!M) {
-    return head + nav + craque + `
+    return head + nav + craque + hls + `
     <section class="sec"><div class="sec-head"><h2>Time ideal</h2><span class="muted small">Os ${line.length} de linha${A.time.gk ? ' e o goleiro' : ''} com mais pontos</span></div>${pitch}
-      <p class="legend-awards"><span>${AWARD_SVG.crown}Craque</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span></p></section>`;
+      <p class="legend-awards"><span>${AWARD_SVG.crown}Craque</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span></p></section>
+    ${yearList(y)}`;
   }
   return head + nav + craque + hls + `
     <section class="sec"><div class="sec-head"><h2>Time ideal</h2><span class="muted small">Os ${line.length} de linha${A.time.gk ? ' e o goleiro' : ''} com mais pontos</span></div>${pitch}
@@ -831,7 +831,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 15.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 16.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
