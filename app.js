@@ -403,7 +403,7 @@ function vRodada(id) {
     <div class="kpis"><div class="kpi"><b>${r.rounds}</b><span>Rodadas</span></div><div class="kpi"><b>${es.length}</b><span>Atletas</span></div>
       <div class="kpi"><b>${goals}</b><span>Gols</span></div><div class="kpi"><b>${es.reduce((s, e) => s + (e.a || 0), 0)}</b><span>Assist.</span></div></div>
     <section class="sec">${roundSheet(r)}</section>
-    ${store.isMaster ? `<div class="btn-row sec"><button class="btn danger" data-act="round-del" data-date="${r.id}">Apagar resumo</button></div>` : ''}`;
+    ${store.isMaster ? `<div class="btn-row sec"><a class="btn primary" href="#/lancar/${r.id}">${I.edit}Editar números do mês</a><button class="btn danger" data-act="round-del" data-date="${r.id}">Apagar resumo</button></div>` : ''}`;
   }
   return `<a class="back" href="#/inicio">${I.back}Início</a>
     <div class="page-head"><div><h1>Rodada de ${C.fmtDate(r.date, { year: false })}</h1>
@@ -770,7 +770,15 @@ function edPlayer(p) {
   const e = state.editor.entries[p.id] || { p: 0 };
   const on = !!e.p;
   const isG = p.pos === 'G';
-  const stats = !on ? '' : isG
+  const S = state.editor.summary;
+  const stats = !on ? '' : S
+    ? (isG
+      ? `<div class="pe-stats">${stepper(p.id, 'p', 'Presenças', e.p, 'Presenças')}${stepper(p.id, 'g', 'Gols', e.g)}${stepper(p.id, 'a', 'Assist.', e.a)}${stepper(p.id, 'cs', 'Sem sofrer', e.cs)}</div>`
+      : `<div class="pe-stats">
+        ${stepper(p.id, 'p', 'Presenças', e.p, 'Pres.')}${stepper(p.id, 'g', 'Gols', e.g)}${stepper(p.id, 'a', 'Assist.', e.a)}${stepper(p.id, 't', 'Títulos', e.t)}
+        ${stepper(p.id, 'w', 'Vitórias', e.w)}${stepper(p.id, 'd', 'Empates', e.d)}${stepper(p.id, 'l', 'Derrotas', e.l)}${stepper(p.id, 'y', 'cartão amarelo', e.y, '<span class="card-y"></span>Amar.')}
+        ${stepper(p.id, 'r', 'cartão vermelho', e.r, '<span class="card-r"></span>Verm.')}</div>`)
+    : isG
     ? `<div class="pe-stats gk">${stepper(p.id, 'g', 'Gols', e.g)}${stepper(p.id, 'a', 'Assist.', e.a)}${stepper(p.id, 'cs', 'Sem sofrer', e.cs)}</div>`
     : `<div class="pe-stats">
         ${stepper(p.id, 'g', 'Gols', e.g)}${stepper(p.id, 'a', 'Assist.', e.a)}
@@ -802,8 +810,12 @@ function vLancar(date) {
   if (!store.isMaster) {
     return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Só masters lançam rodadas</h3><p>Entre com CPF e senha de master para continuar.</p><button class="btn primary" data-act="login">Entrar como master</button></div>`;
   }
-  if (date && store.rounds.find(r => r.id === date)?.summary) {
-    return `<a class="back" href="#/rodada/${esc(date)}">${I.back}Voltar</a><div class="empty"><h3>Resumo do mês não é editável aqui</h3><p>Ele veio da planilha. Para corrigir, ajuste a planilha e peça para importar de novo, ou apague o resumo.</p></div>`;
+  const sumRound = date ? store.rounds.find(r => r.id === date && r.summary) : null;
+  if (sumRound) {
+    if (!state.editor || state.editor.origId !== sumRound.id) {
+      state.editor = { summary: true, origId: sumRound.id, date: sumRound.date, rounds: sumRound.rounds || 1, entries: JSON.parse(JSON.stringify(sumRound.entries || {})), teams: null, note: sumRound.note || '' };
+    }
+    return vLancarSummary();
   }
   if (!state.editor || (date && state.editor.date !== date && state.editor.origId !== date)) state.editor = newEditor(date || defaultRoundDate());
   const ed = state.editor;
@@ -831,6 +843,24 @@ function vLancar(date) {
     <div class="field" style="margin-top:18px"><label for="edNote">Observação (opcional)</label><textarea class="input" id="edNote" data-input="ed-note" placeholder="Ex.: chuva, jogo até 22h, golaço do Fulano">${esc(ed.note)}</textarea></div>
     ${ed.origId ? `<button class="btn danger block" data-act="round-del" data-date="${ed.origId}">Apagar esta rodada</button>` : ''}
     <div class="savebar"><span class="sum" id="edSum">${edSummary()}</span><button class="btn primary" data-act="ed-save">Salvar rodada</button></div>`;
+}
+
+function vLancarSummary() {
+  const ed = state.editor;
+  view.classList.add('has-savebar');
+  const mi = +ed.date.slice(5, 7) - 1;
+  const byName = (a, b) => dn(a).localeCompare(dn(b));
+  const involved = new Set(Object.keys(ed.entries).filter(id => ed.entries[id].p));
+  const pool = store.players.filter(p => p.active !== false || involved.has(p.id));
+  const on = pool.filter(p => involved.has(p.id)).sort(byName), off = pool.filter(p => !involved.has(p.id)).sort(byName);
+  return `<a class="back" href="#/rodada/${esc(ed.origId)}">${I.back}Voltar</a>
+    <div class="page-head"><div><h1>Editar ${C.MONTHS[mi].toLowerCase()}</h1><p>Resumo do mês: os números de cada atleta somados no mês inteiro.</p></div></div>
+    <div class="team-res" style="grid-template-columns:1fr;max-width:220px;margin-bottom:16px"><div class="st"><span class="l">Rodadas no mês</span><div class="c">
+      <button data-act="ed-rounds" data-d="-1" aria-label="Menos rodadas">−</button><b id="edRounds">${ed.rounds}</b>
+      <button data-act="ed-rounds" data-d="1" aria-label="Mais rodadas">+</button></div></div></div>
+    <div class="group-title">Jogaram no mês</div>${on.map(edPlayer).join('') || '<p class="hint">Ninguém marcado.</p>'}
+    <div class="group-title">Outros atletas</div>${off.map(edPlayer).join('')}
+    <div class="savebar"><span class="sum" id="edSum">${edSummary()}</span><button class="btn primary" data-act="ed-save">Salvar mês</button></div>`;
 }
 
 function edSummary() {
@@ -1216,6 +1246,10 @@ const actions = {
     const b = document.getElementById(`v-${pid}-${f}`); if (b) b.textContent = e[f];
     const s = $('#edSum'); if (s) s.innerHTML = edSummary();
   },
+  'ed-rounds': el => {
+    state.editor.rounds = Math.max(1, Math.min(6, state.editor.rounds + +el.dataset.d));
+    const b = $('#edRounds'); if (b) b.textContent = state.editor.rounds;
+  },
   'ed-title': el => { const e = edEntry(el.dataset.pid); e.t = e.t ? 0 : 1; refreshPlayer(el.dataset.pid); },
   'ed-team': el => {
     const i = +el.dataset.i, f = el.dataset.f, ed = state.editor;
@@ -1234,6 +1268,22 @@ const actions = {
   },
   'ed-save': async el => {
     const ed = state.editor;
+    if (ed.summary) {
+      const entries = {};
+      Object.entries(ed.entries).forEach(([id, e]) => {
+        if (!e.p) return;
+        const clean = {}; C.FIELDS.forEach(f => { if (e[f]) clean[f] = e[f]; }); entries[id] = clean;
+      });
+      el.disabled = true;
+      try {
+        const rounds = Math.max(ed.rounds, ...Object.values(entries).map(e => e.p), 1);
+        const r = await store.saveRound({ id: ed.origId, date: ed.date, summary: true, rounds, entries, note: ed.note || '' }, ed.origId);
+        const id = ed.origId; state.editor = null;
+        toast(r === 'queued' ? 'Salvo. Sincroniza quando a internet voltar.' : 'Mês salvo');
+        location.hash = '#/rodada/' + id;
+      } catch (e) { toast(e.message, true); el.disabled = false; }
+      return;
+    }
     if (!ed.date) { toast('Escolha a data da rodada', true); return; }
     const entries = {};
     Object.entries(ed.entries).forEach(([id, e]) => {
@@ -1316,3 +1366,8 @@ setInterval(() => { if (route().name === 'inicio' && !sheetRoot.innerHTML) { con
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 })();
+
+// iPhone: bloqueia o zoom de pinça e de toque duplo
+document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+let lastTouch = 0;
+document.addEventListener('touchend', e => { const t = Date.now(); if (t - lastTouch < 320) e.preventDefault(); lastTouch = t; }, { passive: false });

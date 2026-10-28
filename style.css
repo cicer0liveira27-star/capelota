@@ -33,6 +33,10 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* sem zoom: toque duplo nos botões e foco nos campos não ampliam a tela */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, a, input, select, textarea, label { touch-action: manipulation; }
+input, select, textarea { font-size: 16px !important; }
 html, body { margin: 0; background: var(--noite); }
 body {
   font-family: var(--fb);
