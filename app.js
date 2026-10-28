@@ -664,15 +664,18 @@ function vPremios() {
   const line = A.time.line;
   const rows = FORMATION[line.length] || [line.length];
   let k = 0;
-  const spot = (p, gk) => `<a class="spot ${gk ? 'gk' : ''}" href="#/atleta/${esc(p.id)}">${avatar(p)}<span class="nm">${esc(dn(p))}</span><span class="pt">${T[p.id].pts} pts</span></a>`;
+  const bdg = monthBadges(A);
+  const spot = (p, gk) => `<a class="spot ${gk ? 'gk' : ''}" href="#/atleta/${esc(p.id)}"><span class="spot-av">${avatar(p)}${(bdg[p.id] || []).map((k, i) => `<span class="award a${i}" title="${AWARD_LABEL[k]}">${AWARD_SVG[k]}</span>`).join('')}</span><span class="nm">${esc(dn(p))}</span><span class="pt">${T[p.id].pts} pts</span></a>`;
   const pitch = `<div class="pitch" role="img" aria-label="Time ideal do mês">
     ${rows.map(n => `<div class="line">${line.slice(k, k += n).map(p => spot(p)).join('')}</div>`).join('')}
     ${A.time.gk ? `<div class="line">${spot(A.time.gk, true)}</div>` : ''}
   </div>`;
 
   return head + nav + craque + hls + `
-    <section class="sec"><div class="sec-head"><h2>Time ideal</h2><span class="muted small">Os ${line.length} de linha${A.time.gk ? ' e o goleiro' : ''} com mais pontos</span></div>${pitch}</section>
-    <div class="btn-row sec"><button class="btn" data-act="share-month">${I.share}Compartilhar prêmios</button></div>
+    <section class="sec"><div class="sec-head"><h2>Time ideal</h2><span class="muted small">Os ${line.length} de linha${A.time.gk ? ' e o goleiro' : ''} com mais pontos</span></div>${pitch}
+      <p class="legend-awards"><span>${AWARD_SVG.crown}Craque</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span></p></section>
+    <div class="btn-row sec"><button class="btn primary" data-act="share-month">${I.share}Compartilhar no story</button></div>
+    <p class="hint" style="margin-top:8px">Gera duas imagens no tamanho do story: o time ideal e os destaques do mês.</p>
     ${yearList(y)}`;
 }
 
@@ -1006,51 +1009,93 @@ async function resizePhoto(file, size = 360) {
   } finally { URL.revokeObjectURL(url); }
 }
 
-// ================= CARDS PARA COMPARTILHAR =================
+// ================= CARDS PARA COMPARTILHAR (tamanho story: 1080 x 1920) =================
+const W = 1080, H = 1920;
+// Ícones dos prêmios: coroa (craque), chuteira (artilheiro), cartola (garçom)
+const AWARD_SVG = {
+  crown: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M10 47 6 20l14 11 12-20 12 20 14-11-4 27z" fill="#f2c230" stroke="#0a0f1e" stroke-width="3.5" stroke-linejoin="round"/><rect x="9" y="46" width="46" height="9" rx="2.5" fill="#e0a12a" stroke="#0a0f1e" stroke-width="3.5"/><circle cx="32" cy="11" r="4.5" fill="#d63050" stroke="#0a0f1e" stroke-width="3"/><circle cx="6" cy="20" r="4" fill="#d63050" stroke="#0a0f1e" stroke-width="3"/><circle cx="58" cy="20" r="4" fill="#d63050" stroke="#0a0f1e" stroke-width="3"/><circle cx="32" cy="38" r="3.5" fill="#3c8ea6"/></svg>`,
+  boot: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M5 40c0-7 3-15 9-18l11-3c2 6 8 10 16 11l13 2c6 1 8 6 6 10l-2 5H8c-2-2-3-4-3-7z" fill="#d63050" stroke="#0a0f1e" stroke-width="3.5" stroke-linejoin="round"/><path d="M14 31c8 4 20 6 33 5" fill="none" stroke="#f2ece0" stroke-width="3.5" stroke-linecap="round"/><path d="M24 23l3 4M29 21l3 4M34 22l2 4" stroke="#f2ece0" stroke-width="2.6" stroke-linecap="round"/><rect x="7" y="47" width="51" height="5" rx="2" fill="#0a0f1e"/><path d="M13 52v6M23 52v6M41 52v6M51 52v6" stroke="#0a0f1e" stroke-width="5" stroke-linecap="round"/></svg>`,
+  hat: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M18 9h28l-2 35H20z" fill="#1d2232" stroke="#0a0f1e" stroke-width="3.5" stroke-linejoin="round"/><path d="M19.4 33h25.2l-.5 8H19.9z" fill="#d63050"/><ellipse cx="32" cy="46" rx="27" ry="8" fill="#1d2232" stroke="#0a0f1e" stroke-width="3.5"/><path d="M23 13h4l-1 18h-3z" fill="#ffffff" opacity=".22"/></svg>`
+};
+const awardImgs = {};
+async function awardImg(k) {
+  if (!awardImgs[k]) awardImgs[k] = await loadImg('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(AWARD_SVG[k]));
+  return awardImgs[k];
+}
+const AWARD_LABEL = { crown: 'Craque do mês', boot: 'Artilheiro do mês', hat: 'Garçom do mês' };
+
 const loadImg = src => new Promise(res => { if (!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
 function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+const FD = '"Big Shoulders Display", Barlow, sans-serif', FB = 'Barlow, sans-serif';
+function fit(x, text, maxW) { let t = text; while (x.measureText(t).width > maxW && t.length > 3) t = t.slice(0, -2) + '…'; return t !== text && !t.endsWith('…') ? t + '…' : t; }
 
 async function cardBase(title, subtitle) {
   await Promise.all(['900 80px "Big Shoulders Display"', '800 40px "Big Shoulders Display"', '600 30px Barlow', '700 30px Barlow'].map(f => document.fonts.load(f, 'Capelota 0123'))).catch(() => {});
-  const c = document.createElement('canvas'); c.width = 1080; c.height = 1350;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d');
-  x.fillStyle = '#0a0f1e'; x.fillRect(0, 0, 1080, 1350);
-  let g = x.createRadialGradient(1000, 80, 40, 1000, 80, 900); g.addColorStop(0, 'rgba(214,48,80,.45)'); g.addColorStop(1, 'rgba(214,48,80,0)');
-  x.fillStyle = g; x.fillRect(0, 0, 1080, 1350);
-  g = x.createRadialGradient(0, 1350, 40, 0, 1350, 800); g.addColorStop(0, 'rgba(58,97,136,.45)'); g.addColorStop(1, 'rgba(58,97,136,0)');
-  x.fillStyle = g; x.fillRect(0, 0, 1080, 1350);
-  // listra do sombrero
+  x.fillStyle = '#0a0f1e'; x.fillRect(0, 0, W, H);
+  let g = x.createRadialGradient(1000, 100, 40, 1000, 100, 1100); g.addColorStop(0, 'rgba(214,48,80,.45)'); g.addColorStop(1, 'rgba(214,48,80,0)');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  g = x.createRadialGradient(0, H, 40, 0, H, 1100); g.addColorStop(0, 'rgba(58,97,136,.5)'); g.addColorStop(1, 'rgba(58,97,136,0)');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
   const pat = ['#d63050', '#3c8ea6', '#f2ece0', '#3c8ea6'], wd = [36, 16, 8, 16];
-  for (let px = 0, i = 0; px < 1080; px += wd[i % 4], i++) { x.fillStyle = pat[i % 4]; x.fillRect(px, 1326, wd[i % 4], 24); }
+  for (let px = 0, i = 0; px < W; px += wd[i % 4], i++) { x.fillStyle = pat[i % 4]; x.fillRect(px, H - 28, wd[i % 4], 28); }
   const logo = await loadImg('icons/logo-512.png');
-  if (logo) x.drawImage(logo, 60, 50, 150, 150 * logo.height / logo.width);
-  x.fillStyle = '#f2ece0'; x.font = '900 84px "Big Shoulders Display", Barlow, sans-serif'; x.textBaseline = 'alphabetic';
-  x.fillText('Capelota', 230, 128);
-  x.fillStyle = '#a7b0c5'; x.font = '600 32px Barlow, sans-serif'; x.fillText(subtitle, 232, 176);
-  x.fillStyle = '#ff7088'; x.font = '600 34px Barlow, sans-serif'; x.textAlign = 'right'; x.fillText(title, 1020, 128); x.textAlign = 'left';
+  if (logo) x.drawImage(logo, 60, 90, 160, 160 * logo.height / logo.width);
+  x.textBaseline = 'alphabetic'; x.textAlign = 'left';
+  x.fillStyle = '#f2ece0'; x.font = `900 92px ${FD}`; x.fillText('Capelota', 240, 175);
+  x.fillStyle = '#a7b0c5'; x.font = `600 34px ${FB}`; x.fillText(subtitle, 243, 225);
+  x.fillStyle = '#ff7088'; x.font = `600 36px ${FB}`; x.textAlign = 'right'; x.fillText(title, 1020, 175); x.textAlign = 'left';
   return { c, x };
 }
 
 async function drawSticker(x, p, cx, cy, w, h, rot) {
   x.save(); x.translate(cx, cy); x.rotate(rot);
   x.shadowColor = 'rgba(0,0,0,.5)'; x.shadowBlur = 40; x.shadowOffsetY = 18;
-  x.fillStyle = '#f2ece0'; rr(x, -w / 2, -h / 2, w, h, 22); x.fill();
+  x.fillStyle = '#f2ece0'; rr(x, -w / 2, -h / 2, w, h, w * 0.04); x.fill();
   x.shadowColor = 'transparent';
-  const pad = 18, phH = h - 150;
-  x.save(); rr(x, -w / 2 + pad, -h / 2 + pad, w - pad * 2, phH, 14); x.clip();
+  const pad = w * 0.03, band = h * 0.17, phH = h - band - pad * 1.6;
+  x.save(); rr(x, -w / 2 + pad, -h / 2 + pad, w - pad * 2, phH, w * 0.025); x.clip();
   const g = x.createLinearGradient(0, -h / 2, 0, -h / 2 + phH); g.addColorStop(0, '#3a6188'); g.addColorStop(1, '#22395a');
   x.fillStyle = g; x.fillRect(-w / 2, -h / 2, w, h);
   const img = await loadImg(p.photo);
   if (img) x.drawImage(img, -w / 2 + pad, -h / 2 + pad, w - pad * 2, phH);
-  else { x.fillStyle = 'rgba(255,255,255,.75)'; x.font = '900 220px "Big Shoulders Display", Barlow, sans-serif'; x.textAlign = 'center'; x.fillText(initials(p), 0, -h / 2 + pad + phH / 2 + 80); x.textAlign = 'left'; }
+  else { x.fillStyle = 'rgba(255,255,255,.78)'; x.font = `900 ${Math.round(w * 0.38)}px ${FD}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(initials(p), 0, -h / 2 + pad + phH / 2); x.textBaseline = 'alphabetic'; x.textAlign = 'left'; }
   x.restore();
-  if (p.num) { x.fillStyle = '#d63050'; x.beginPath(); x.arc(-w / 2 + pad + 50, -h / 2 + pad + 50, 40, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.font = '900 46px "Big Shoulders Display", Barlow, sans-serif'; x.textAlign = 'center'; x.fillText(p.num, -w / 2 + pad + 50, -h / 2 + pad + 66); x.textAlign = 'left'; }
-  x.fillStyle = '#0a0f1e'; x.fillRect(-w / 2, h / 2 - 132, w, 132);
-  x.fillStyle = '#d63050'; x.fillRect(-w / 2, h / 2 - 132, w, 10);
-  x.fillStyle = '#f2ece0'; x.font = '900 70px "Big Shoulders Display", Barlow, sans-serif'; x.textAlign = 'center';
-  let name = dn(p); while (x.measureText(name).width > w - 50 && name.length > 3) name = name.slice(0, -2) + '…';
-  x.fillText(name, 0, h / 2 - 40); x.textAlign = 'left';
-  // recorte arredondado inferior
+  if (p.num) {
+    const r = w * 0.07, bx = -w / 2 + pad + r + 12, by = -h / 2 + pad + r + 12;
+    x.fillStyle = '#d63050'; x.beginPath(); x.arc(bx, by, r, 0, Math.PI * 2); x.fill();
+    x.fillStyle = '#fff'; x.font = `900 ${Math.round(r * 1.15)}px ${FD}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(p.num, bx, by + 2); x.textBaseline = 'alphabetic'; x.textAlign = 'left';
+  }
+  x.fillStyle = '#0a0f1e'; x.fillRect(-w / 2, h / 2 - band, w, band);
+  x.fillStyle = '#d63050'; x.fillRect(-w / 2, h / 2 - band, w, Math.max(6, band * 0.08));
+  x.fillStyle = '#f2ece0'; x.font = `900 ${Math.round(band * 0.55)}px ${FD}`; x.textAlign = 'center';
+  x.fillText(fit(x, dn(p), w - 40), 0, h / 2 - band * 0.3); x.textAlign = 'left';
+  x.restore();
+}
+
+async function drawBadge(x, kind, cx, cy, r) {
+  x.save();
+  x.shadowColor = 'rgba(0,0,0,.45)'; x.shadowBlur = 16; x.shadowOffsetY = 6;
+  x.fillStyle = '#f2ece0'; x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fill();
+  x.shadowColor = 'transparent';
+  x.lineWidth = Math.max(3, r * 0.09); x.strokeStyle = kind === 'crown' ? '#f2c230' : '#d63050'; x.stroke();
+  const img = await awardImg(kind);
+  if (img) x.drawImage(img, cx - r * 0.72, cy - r * 0.72, r * 1.44, r * 1.44);
+  x.restore();
+}
+
+async function drawAvatar(x, p, cx, cy, r, ring) {
+  x.save();
+  x.shadowColor = 'rgba(0,0,0,.5)'; x.shadowBlur = 24; x.shadowOffsetY = 10;
+  x.fillStyle = ring; x.beginPath(); x.arc(cx, cy, r + 7, 0, Math.PI * 2); x.fill();
+  x.shadowColor = 'transparent';
+  x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.clip();
+  const g = x.createLinearGradient(0, cy - r, 0, cy + r); g.addColorStop(0, '#3a6188'); g.addColorStop(1, '#22395a');
+  x.fillStyle = g; x.fillRect(cx - r, cy - r, r * 2, r * 2);
+  const img = await loadImg(p.photo);
+  if (img) x.drawImage(img, cx - r, cy - r, r * 2, r * 2);
+  else { x.fillStyle = '#fff'; x.font = `900 ${Math.round(r * 0.8)}px ${FD}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(initials(p), cx, cy + 3); }
   x.restore();
 }
 
@@ -1058,22 +1103,27 @@ function statTiles(x, items, y) {
   const n = items.length, gap = 18, w = (960 - gap * (n - 1)) / n;
   items.forEach(([v, l], i) => {
     const px = 60 + i * (w + gap);
-    x.fillStyle = 'rgba(24,35,60,.92)'; rr(x, px, y, w, 170, 22); x.fill();
+    x.fillStyle = 'rgba(24,35,60,.92)'; rr(x, px, y, w, 190, 24); x.fill();
     x.strokeStyle = '#27365a'; x.lineWidth = 2; x.stroke();
-    x.fillStyle = '#f2ece0'; x.font = '900 86px "Big Shoulders Display", Barlow, sans-serif'; x.textAlign = 'center'; x.fillText(String(v), px + w / 2, y + 100);
-    x.fillStyle = '#a7b0c5'; x.font = '600 28px Barlow, sans-serif'; x.fillText(l, px + w / 2, y + 146); x.textAlign = 'left';
+    x.fillStyle = '#f2ece0'; x.font = `900 ${String(v).length > 3 ? 72 : 92}px ${FD}`; x.textAlign = 'center'; x.fillText(String(v), px + w / 2, y + 112);
+    x.fillStyle = '#a7b0c5'; x.font = `600 30px ${FB}`; x.fillText(l, px + w / 2, y + 160); x.textAlign = 'left';
   });
 }
 
-async function shareCanvas(c, name) {
+async function canvasFile(c, name) {
   const blob = await new Promise(r => c.toBlob(r, 'image/png'));
-  const file = new File([blob], name, { type: 'image/png' });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: 'Capelota' }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  return new File([blob], name, { type: 'image/png' });
+}
+async function shareFiles(files) {
+  if (navigator.canShare && navigator.canShare({ files })) {
+    try { await navigator.share({ files, title: 'Capelota' }); return; } catch (e) { if (e.name === 'AbortError') return; }
   }
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  toast('Imagem baixada');
+  for (const f of files) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    await new Promise(r => setTimeout(r, 400));
+  }
+  toast(files.length > 1 ? 'Imagens baixadas' : 'Imagem baixada');
 }
 
 async function sharePlayer(id) {
@@ -1082,43 +1132,109 @@ async function sharePlayer(id) {
   const { totals: T } = C.aggregate(store.rounds, store.players, per, store.settings);
   const t = T[p.id] || C.zero();
   const { c, x } = await cardBase(C.periodLabel(per), 'Terças, 19h');
-  await drawSticker(x, p, 540, 650, 600, 760, -0.045);
+  await drawSticker(x, p, 540, 860, 720, 920, -0.04);
   const items = p.pos === 'G' ? [[t.p, 'Presenças'], [t.cs, 'Sem sofrer'], [t.g, 'Gols'], [t.pts, 'Pontos']] : [[t.p, 'Presenças'], [t.g, 'Gols'], [t.a, 'Assist.'], [t.pts, 'Pontos']];
-  statTiles(x, items, 1110);
-  await shareCanvas(c, `capelota-${dn(p).toLowerCase().replace(/\W+/g, '-')}.png`);
+  statTiles(x, items, 1450);
+  if (p.pos !== 'G') statTiles(x, [[t.w, 'Vitórias'], [t.d, 'Empates'], [t.l, 'Derrotas'], [t.t, 'Títulos']], 1662);
+  await shareFiles([await canvasFile(c, `capelota-${dn(p).toLowerCase().replace(/\W+/g, '-')}.png`)]);
+}
+
+// Quem leva cada ícone no mês
+function monthBadges(A) {
+  const b = {};
+  const add = (id, k) => { (b[id] = b[id] || []).push(k); };
+  if (A.mvp) add(A.mvp.id, 'crown');
+  A.artilheiro.forEach(p => add(p.id, 'boot'));
+  A.garcom.forEach(p => add(p.id, 'hat'));
+  return b;
+}
+
+async function storyTimeIdeal(A) {
+  const T = A.totals, { y, m } = A, badges = monthBadges(A);
+  const { c, x } = await cardBase(`${C.MONTHS[m - 1]} ${y}`, 'Time ideal do mês');
+  // campo
+  const fx = 50, fy = 300, fw = 980, fh = 1290;
+  x.save(); rr(x, fx, fy, fw, fh, 36); x.clip();
+  for (let i = 0; i < 12; i++) { x.fillStyle = i % 2 ? '#12303a' : '#0f2a33'; x.fillRect(fx, fy + i * fh / 12, fw, fh / 12 + 1); }
+  x.strokeStyle = 'rgba(242,236,224,.2)'; x.lineWidth = 4;
+  rr(x, fx + 24, fy + 24, fw - 48, fh - 48, 10); x.stroke();
+  x.beginPath(); x.arc(fx + fw / 2, fy + 24, 120, 0, Math.PI); x.stroke();
+  x.strokeRect(fx + fw / 2 - 210, fy + fh - 24 - 170, 420, 170);
+  x.strokeRect(fx + fw / 2 - 100, fy + fh - 24 - 70, 200, 70);
+  x.restore();
+  const line = A.time.line, rows = FORMATION[line.length] || [line.length];
+  const nRows = rows.length + (A.time.gk ? 1 : 0);
+  const top = fy + 150, bottom = fy + fh - 170, step = nRows > 1 ? (bottom - top) / (nRows - 1) : 0;
+  const R = line.length > 6 ? 78 : 92;
+  const spots = []; let k = 0;
+  rows.forEach((n, ri) => { const ps = line.slice(k, k += n); ps.forEach((p, i) => spots.push({ p, cx: fx + fw * (i + 1) / (n + 1), cy: top + ri * step })); });
+  if (A.time.gk) spots.push({ p: A.time.gk, cx: fx + fw / 2, cy: top + rows.length * step, gk: true });
+  for (const s of spots) {
+    await drawAvatar(x, s.p, s.cx, s.cy, R, s.gk ? '#3c8ea6' : '#f2ece0');
+    const bs = badges[s.p.id] || [];
+    for (let i = 0; i < bs.length; i++) {
+      const ang = -Math.PI / 4 - i * 0.75;
+      await drawBadge(x, bs[i], s.cx + Math.cos(ang) * (R + 8), s.cy + Math.sin(ang) * (R + 8), 40);
+    }
+    x.font = `800 36px ${FD}`; x.textAlign = 'center';
+    const nm = fit(x, dn(s.p), 230), tw = x.measureText(nm).width;
+    x.fillStyle = 'rgba(10,15,30,.86)'; rr(x, s.cx - tw / 2 - 14, s.cy + R + 16, tw + 28, 50, 12); x.fill();
+    x.fillStyle = '#f2ece0'; x.fillText(nm, s.cx, s.cy + R + 54);
+    x.fillStyle = '#c9cfdc'; x.font = `600 26px ${FB}`; x.fillText(`${T[s.p.id].pts} pts`, s.cx, s.cy + R + 94);
+    x.textAlign = 'left';
+  }
+  // legenda
+  const leg = [['crown', A.mvp ? `${dn(A.mvp)}` : '–', 'Craque'], ['boot', A.artilheiro.length ? `${A.artilheiro.map(dn).join(', ')} (${T[A.artilheiro[0].id].g})` : '–', 'Artilheiro'], ['hat', A.garcom.length ? `${A.garcom.map(dn).join(', ')} (${T[A.garcom[0].id].a})` : '–', 'Garçom']];
+  let ly = 1640;
+  for (const [kind, who, lab] of leg) {
+    await drawBadge(x, kind, 98, ly + 30, 34);
+    x.fillStyle = '#a7b0c5'; x.font = `600 28px ${FB}`; x.fillText(lab, 150, ly + 18);
+    x.fillStyle = '#f2ece0'; x.font = `700 34px ${FB}`; x.fillText(fit(x, who, 860), 150, ly + 56);
+    ly += 82;
+  }
+  return canvasFile(c, `capelota-time-ideal-${y}-${String(m).padStart(2, '0')}.png`);
+}
+
+async function storyDestaques(A) {
+  const T = A.totals, { y, m } = A;
+  const { c, x } = await cardBase(`${C.MONTHS[m - 1]} ${y}`, 'Destaques do mês');
+  // craque
+  const mvp = A.mvp;
+  await drawSticker(x, mvp, 330, 690, 440, 560, -0.05);
+  await drawBadge(x, 'crown', 515, 430, 62);
+  x.fillStyle = '#ff7088'; x.font = `600 36px ${FB}`; x.fillText('Craque do mês', 600, 520);
+  x.fillStyle = '#f2ece0'; x.font = `900 96px ${FD}`; x.fillText(fit(x, dn(mvp), 440), 596, 615);
+  x.font = `900 150px ${FD}`; x.fillText(String(T[mvp.id].pts), 596, 775);
+  x.fillStyle = '#a7b0c5'; x.font = `800 44px ${FD}`; x.fillText('pontos', 600, 830);
+  x.fillStyle = '#c9cfdc'; x.font = `600 32px ${FB}`;
+  x.fillText(mvp.pos === 'G' ? `${T[mvp.id].cs} sem sofrer gol` : `${T[mvp.id].g} gols, ${T[mvp.id].a} assist.`, 600, 890);
+  x.fillText(`${T[mvp.id].p} presenças`, 600, 936);
+  // artilheiro e garçom
+  const box = async (kind, list, val, unit, bx) => {
+    const by = 1060, bw = 470, bh = 760;
+    x.fillStyle = 'rgba(24,35,60,.9)'; rr(x, bx, by, bw, bh, 32); x.fill(); x.strokeStyle = '#27365a'; x.lineWidth = 2; x.stroke();
+    x.fillStyle = '#ff7088'; x.font = `600 34px ${FB}`; x.textAlign = 'center'; x.fillText(AWARD_LABEL[kind], bx + bw / 2, by + 70); x.textAlign = 'left';
+    if (!list.length) { x.fillStyle = '#6f7a94'; x.font = `600 34px ${FB}`; x.textAlign = 'center'; x.fillText('Ninguém ainda', bx + bw / 2, by + bh / 2); x.textAlign = 'left'; return; }
+    const p = list[0];
+    await drawSticker(x, p, bx + bw / 2, by + 330, 300, 380, kind === 'boot' ? -0.04 : 0.04);
+    await drawBadge(x, kind, bx + bw / 2 + 140, by + 150, 50);
+    x.textAlign = 'center';
+    x.fillStyle = '#f2ece0'; x.font = `900 120px ${FD}`; x.fillText(String(val), bx + bw / 2, by + 660);
+    x.fillStyle = '#a7b0c5'; x.font = `700 32px ${FB}`; x.fillText(list.length > 1 ? `${unit}, empatados: ${list.length}` : unit, bx + bw / 2, by + 712);
+    x.textAlign = 'left';
+  };
+  await box('boot', A.artilheiro, A.artilheiro.length ? T[A.artilheiro[0].id].g : 0, 'gols', 50);
+  await box('hat', A.garcom, A.garcom.length ? T[A.garcom[0].id].a : 0, 'assistências', 560);
+  return canvasFile(c, `capelota-destaques-${y}-${String(m).padStart(2, '0')}.png`);
 }
 
 async function shareMonth() {
   const { y, m } = state.awards;
   const A = C.monthAwards(store.rounds, store.players, y, m, store.settings);
   if (!A.mvp) return;
-  const T = A.totals;
-  const { c, x } = await cardBase(`${C.MONTHS[m - 1]} ${y}`, 'Prêmios do mês');
-  await drawSticker(x, A.mvp, 300, 560, 400, 520, -0.05);
-  x.fillStyle = '#ff7088'; x.font = '600 34px Barlow, sans-serif'; x.fillText('Craque do mês', 560, 380);
-  x.fillStyle = '#f2ece0'; x.font = '900 92px "Big Shoulders Display", Barlow, sans-serif';
-  let nm = dn(A.mvp); while (x.measureText(nm).width > 470 && nm.length > 3) nm = nm.slice(0, -2) + '…';
-  x.fillText(nm, 556, 470);
-  x.font = '900 130px "Big Shoulders Display", Barlow, sans-serif'; x.fillText(String(T[A.mvp.id].pts), 556, 610);
-  const tw = x.measureText(String(T[A.mvp.id].pts)).width;
-  x.fillStyle = '#a7b0c5'; x.font = '800 44px "Big Shoulders Display", Barlow, sans-serif'; x.fillText('pontos', 570 + tw, 610);
-  const names = l => l.map(dn).join(', ') || '–';
-  const rows = [
-    ['Artilheiro', A.artilheiro.length ? `${names(A.artilheiro)} (${T[A.artilheiro[0].id].g})` : '–'],
-    ['Garçom', A.garcom.length ? `${names(A.garcom)} (${T[A.garcom[0].id].a})` : '–'],
-    ['Paredão', A.paredao ? `${dn(A.paredao)} (${T[A.paredao.id].cs})` : '–'],
-    ['Time ideal', [A.time.gk, ...A.time.line].filter(Boolean).map(dn).join(', ')]
-  ];
-  let yy = 900;
-  rows.forEach(([k, v]) => {
-    x.fillStyle = '#a7b0c5'; x.font = '600 30px Barlow, sans-serif'; x.fillText(k, 60, yy);
-    x.fillStyle = '#f2ece0'; x.font = '700 38px Barlow, sans-serif';
-    // quebra de linha simples
-    const words = v.split(' '); let line = '', ly = yy + 48;
-    words.forEach(wd => { const t2 = line ? line + ' ' + wd : wd; if (x.measureText(t2).width > 960) { x.fillText(line, 60, ly); line = wd; ly += 46; } else line = t2; });
-    x.fillText(line, 60, ly); yy = ly + 62;
-  });
-  await shareCanvas(c, `capelota-premios-${y}-${String(m).padStart(2, '0')}.png`);
+  toast('Montando as imagens…');
+  const files = [await storyTimeIdeal(A), await storyDestaques(A)];
+  await shareFiles(files);
 }
 
 // ================= BACKUP =================

@@ -540,3 +540,14 @@ textarea.input { min-height: 80px; resize: vertical; }
   .hero-grid { grid-template-columns: 1fr 92px; }
   .hero img { width: 92px; }
 }
+
+/* ícones dos prêmios no time ideal */
+.spot-av { position: relative; display: block; }
+.award { position: absolute; width: 28px; height: 28px; border-radius: 50%; background: var(--couro); display: grid; place-items: center; box-shadow: 0 3px 8px rgba(0,0,0,.45); border: 2px solid var(--sombrero); }
+.award svg { width: 21px; height: 21px; }
+.award.a0 { top: -8px; right: -10px; }
+.award.a1 { top: -12px; left: -10px; }
+.award.a2 { bottom: -6px; right: -12px; }
+.legend-awards { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 13.5px; color: var(--texto-2); }
+.legend-awards span { display: inline-flex; align-items: center; gap: 6px; }
+.legend-awards svg { width: 22px; height: 22px; background: var(--couro); border-radius: 50%; padding: 2px; }
