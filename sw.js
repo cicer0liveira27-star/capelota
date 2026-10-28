@@ -1,6 +1,6 @@
 // Service worker do Capelota: deixa o app abrir sem internet.
 // Os dados do banco compartilhado têm cache próprio do Firebase; aqui só guardamos a "casca" do app.
-const VERSION = 'capelota-v4';
+const VERSION = 'capelota-v5';
 const SHELL = [
   './', './index.html', './style.css', './app.js', './store.js', './calc.js', './firebase-config.js',
   './manifest.webmanifest', './icons/logo-256.png', './icons/logo-512.png', './icons/icon-192.png', './icons/favicon-64.png'
@@ -22,13 +22,25 @@ self.addEventListener('fetch', e => {
   const same = url.origin === self.location.origin;
   if (!same && !CACHEABLE_HOSTS.includes(url.hostname)) return; // Firestore, Auth etc. passam direto
   if (!same && url.hostname === 'www.gstatic.com' && !url.pathname.startsWith('/firebasejs/')) return;
-  // stale-while-revalidate: abre rápido com o que tem guardado e atualiza por trás
+  if (same) {
+    // arquivos do app: sempre tenta a versão mais nova; sem internet, usa a guardada
+    e.respondWith(caches.open(VERSION).then(async cache => {
+      try {
+        const res = await fetch(req, { cache: 'no-cache' });
+        if (res && res.ok) cache.put(req, res.clone());
+        return res;
+      } catch (err) {
+        return (await cache.match(req, { ignoreSearch: true })) || Response.error();
+      }
+    }));
+    return;
+  }
+  // fontes e SDK do Firebase: cache primeiro
   e.respondWith(caches.open(VERSION).then(async cache => {
-    const cached = await cache.match(req, { ignoreSearch: same });
-    const net = fetch(req).then(res => {
-      if (res && (res.ok || res.type === 'opaque')) cache.put(req, res.clone());
-      return res;
-    }).catch(() => cached);
-    return cached || net;
+    const cached = await cache.match(req);
+    if (cached) return cached;
+    const res = await fetch(req);
+    if (res && (res.ok || res.type === 'opaque')) cache.put(req, res.clone());
+    return res;
   }));
 });
