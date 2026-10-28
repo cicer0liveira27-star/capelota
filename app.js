@@ -714,6 +714,8 @@ function vSorteio() {
 
 // ================= CAIXA (só masters) =================
 state.cx = { y: thisY(), m: thisM(), tab: 'mens', filter: 'all' };
+// o caixa começa em novembro/2026: antes disso abre direto no primeiro mês do caixa
+if (K.monthKey(thisY(), thisM()) < K.FINANCE_START) Object.assign(state.cx, { y: +K.FINANCE_START.slice(0, 4), m: +K.FINANCE_START.slice(5, 7) });
 const cxCfg = () => K.getConfig(store.finance);
 const cxView = () => K.monthView(store.players, store.rounds, state.cx.y, state.cx.m, store.finance[K.monthKey(state.cx.y, state.cx.m)], cxCfg());
 async function cxSave(view, msg) {
@@ -777,7 +779,8 @@ function vCaixa() {
       <div class="btn-row" style="margin-top:12px"><button class="btn primary" data-act="cx-${kind}">＋ Lançar ${word}</button><button class="btn" data-act="cx-type" data-k="${kind}">＋ Cadastrar outra ${word}</button></div>
       <button class="btn sm ghost" style="margin-top:8px" data-act="cx-types" data-k="${kind}">⚙ Tipos de ${word} e valores fixos</button>`;
   } else if (s.tab === 'total') {
-    const tv = K.totalView(store.players, store.rounds, store.finance, thisY(), thisM());
+    const cur = K.monthKey(thisY(), thisM()) < K.FINANCE_START ? K.FINANCE_START : K.monthKey(thisY(), thisM());
+    const tv = K.totalView(store.players, store.rounds, store.finance, +cur.slice(0, 4), +cur.slice(5, 7));
     const ini = tv.first ? `${C.MONTHS[+tv.first.slice(5) - 1].toLowerCase()}/${tv.first.slice(0, 4)}` : '';
     const row = (ico, n, val) => `<div class="st-row"><span class="cx-ico ${ico}">${ico === 'in' ? '＋' : '−'}</span><span class="nm">${esc(n)}</span><span class="line"><b>${K.brl(val)}</b></span></div>`;
     body = `<div class="cx-result ${tv.saldo >= 0 ? 'ok' : 'bad'}"><span>Saldo em caixa</span><b>${K.brl(tv.saldo)}</b>
@@ -814,6 +817,11 @@ function vCaixa() {
       ${outCats.length ? `<div class="sheet-table">${outCats.map(c => `<div class="st-row"><span class="cx-ico out">−</span><span class="nm">${esc(c.name)}</span><span class="line"><b>${K.brl(c.amount)}</b></span></div>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma despesa no mês.</p></div>`}
       <div class="btn-row" style="margin-top:14px"><button class="btn sm" data-act="cx-tab" data-t="rec">Ver receitas</button><button class="btn sm" data-act="cx-tab" data-t="desp">Ver despesas</button></div>
       <button class="btn sm" style="margin-top:10px" data-act="cx-prices">Valores: mensalidade ${K.brl(v.doc.prices.mensal)} · diária ${K.brl(v.doc.prices.diaria)}</button>`;
+  }
+  if (s.tab !== 'total' && K.monthKey(s.y, s.m) < K.FINANCE_START) {
+    const ini = `${C.MONTHS[+K.FINANCE_START.slice(5) - 1].toLowerCase()}/${K.FINANCE_START.slice(0, 4)}`;
+    body = `<div class="empty" style="padding:26px 18px"><p><b>O caixa começa em ${ini}.</b></p><p class="muted" style="margin-top:6px">Os meses anteriores não entram nas contas: estão todos quitados.</p>
+      <button class="btn primary" style="margin-top:14px" data-act="cx-goto2">Ir para ${ini}</button></div>`;
   }
   return `<div class="page-head"><div><h1>Caixa</h1><p>Só a comissão vê esta área.</p></div></div>${nav}${seg}${body}`;
 }
@@ -1396,7 +1404,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 32.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 33.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2226,6 +2234,7 @@ const actions = {
   'cx-types': el => typesSheet(el.dataset.k),
   'cx-type': el => typeSheet(el.dataset.k),
   'cx-goto': el => { Object.assign(state.cx, { y: +el.dataset.y, m: +el.dataset.m, tab: 'caixa' }); render(); window.scrollTo(0, 0); },
+  'cx-goto2': () => { Object.assign(state.cx, { y: +K.FINANCE_START.slice(0, 4), m: +K.FINANCE_START.slice(5, 7) }); render(); },
   'cx-tab': el => { state.cx.tab = el.dataset.t; render(); },
   'cx-filter': el => { state.cx.filter = el.dataset.f; render(); },
   'cx-fee': el => feeSheet(el.dataset.id),

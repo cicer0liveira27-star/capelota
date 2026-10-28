@@ -24,8 +24,8 @@ export function getConfig(finance) {
 const isMonthKey = k => /^\d{4}-\d{2}$/.test(k);
 export const METHODS = ['PIX', 'Dinheiro', 'Cartão'];
 
-// O caixa começou a ser controlado em outubro/2026: meses anteriores estão todos quitados
-export const FINANCE_START = '2026-10';
+// O caixa só conta a partir de novembro/2026: meses anteriores ficam fora das contas (todos quitados)
+export const FINANCE_START = '2026-11';
 
 export const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 export const monthKey = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
@@ -75,8 +75,8 @@ export function monthView(players, rounds, y, m, doc, cfg) {
   cfg = cfg || DEFAULT_CONFIG;
   const nPel = peladasNoMes(rounds, key);
   d.fixed = { exp: { ...(d.fixed?.exp || {}) }, inc: { ...(d.fixed?.inc || {}) } };
-  // fixas valem para todo mês que teve pelada (e de outubro/2026 em diante)
-  const fixedOf = kind => (key < FINANCE_START && !nPel) ? [] : (cfg[kind] || []).filter(t => t.freq !== 'avulsa' && +t.amount > 0).map(t => {
+  // fixas só a partir do início do caixa
+  const fixedOf = kind => key < FINANCE_START ? [] : (cfg[kind] || []).filter(t => t.freq !== 'avulsa' && +t.amount > 0).map(t => {
     const o = d.fixed[kind][t.name] || {};
     const base = t.freq === 'mes' ? +t.amount : +t.amount * nPel;
     return { name: t.name, freq: t.freq, unit: +t.amount, n: nPel, amount: o.amount ?? base, custom: o.amount != null, off: !!o.off };
@@ -124,9 +124,8 @@ export function overdue(players, rounds, finance, today) {
 
 // Meses com caixa: de outubro/2026 até o mês pedido (e qualquer mês que tenha lançamento salvo)
 function caixaMonths(finance, rounds, y, m) {
-  const until = monthKey(y, m), set = new Set(Object.keys(finance || {}).filter(k => isMonthKey(k) && k <= until));
-  const first = [FINANCE_START, ...(rounds || []).map(r => r.date.slice(0, 7))].sort()[0];
-  let yy = +first.slice(0, 4), mm = +first.slice(5, 7);
+  const until = monthKey(y, m), set = new Set(Object.keys(finance || {}).filter(k => isMonthKey(k) && k >= FINANCE_START && k <= until));
+  let yy = +FINANCE_START.slice(0, 4), mm = +FINANCE_START.slice(5, 7);
   while (monthKey(yy, mm) <= until) { set.add(monthKey(yy, mm)); mm++; if (mm > 12) { mm = 1; yy++; } }
   return [...set].sort();
 }
