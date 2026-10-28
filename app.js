@@ -799,6 +799,8 @@ function vAjustes() {
         : `<div class="status"><i></i><span>Modo local: os dados ficam só neste aparelho. Para a galera toda acompanhar, ligue o banco compartilhado (passo a passo no README do projeto).</span></div>`}
       <p>${store.players.length} atletas e ${C.roundCount(store.rounds)} rodadas guardados${store.usingSeed ? ', vindos da planilha oficial publicada com o app' : ''}.</p>
       ${M ? `<button class="btn" data-act="load-seed">Carregar dados da planilha</button>` : ''}
+      ${M && store.deviceData ? `<div class="status" style="margin-top:12px"><i></i><span>Este aparelho tem dados salvos de antes do banco compartilhado (${store.deviceData.players.length} atletas, ${store.deviceData.rounds.length} registros), com as edições feitas aqui.</span></div>
+        <div class="btn-row"><button class="btn primary" data-act="push-device">Enviar dados deste aparelho para o banco</button><button class="btn ghost" data-act="drop-device">Descartar</button></div>` : ''}
     </div>
     <div class="panel"><h3>Backup</h3>
       <p>Baixe um arquivo com todos os atletas, fotos e rodadas. Para restaurar, escolha um backup baixado antes: ele substitui os dados atuais.</p>
@@ -829,7 +831,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 12.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 13.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1520,6 +1522,18 @@ const actions = {
     state.scoringDraft = el.dataset.v;
     $$('[data-act=scoring]').forEach(b => b.classList.toggle('on', b === el));
     const ws = $$('.weights'); ws[0].hidden = el.dataset.v === 'capelota'; ws[1].hidden = el.dataset.v !== 'capelota';
+  },
+  'push-device': async el => {
+    const d = store.deviceData; if (!d) return;
+    const ok = await confirmSheet('Enviar dados deste aparelho?', `Os ${d.players.length} atletas e ${d.rounds.length} registros salvos neste celular viram os dados oficiais do banco, para todo mundo. Isso substitui o que está no banco agora.`, 'Enviar dados', false);
+    if (!ok) return;
+    el.disabled = true;
+    try { const r = await store.importAll({ app: 'capelota', version: 1, players: d.players, rounds: d.rounds, settings: d.settings }); if (d.draw) await store.saveDraw(d.draw).catch(() => {}); store.clearDeviceData(); toast(`Enviado: ${r.players} atletas e ${r.rounds} registros`); }
+    catch (e) { toast(e.message, true); el.disabled = false; }
+  },
+  'drop-device': async () => {
+    const ok = await confirmSheet('Descartar dados deste aparelho?', 'As edições que ficaram só neste celular serão apagadas dele. O banco compartilhado não muda.', 'Descartar');
+    if (ok) { store.clearDeviceData(); toast('Dados do aparelho descartados'); }
   },
   'load-seed': async () => {
     try {

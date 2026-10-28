@@ -351,6 +351,13 @@ class Store {
     this.draw = data; this._persistLocal(); this._emit(); return 'ok';
   }
 
+  // Dados que ficaram salvos neste aparelho antes do banco compartilhado
+  get deviceData() {
+    if (this.mode !== 'cloud') return null;
+    try { const d = JSON.parse(localStorage.getItem(LS_DATA) || 'null'); return d && Array.isArray(d.players) && d.players.length ? d : null; } catch (e) { return null; }
+  }
+  clearDeviceData() { try { localStorage.removeItem(LS_DATA); } catch (e) {} this._emit(); }
+
   // ---------- backup ----------
   exportAll() {
     return {
