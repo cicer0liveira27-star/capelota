@@ -1039,7 +1039,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 20.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 21.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -1814,13 +1814,20 @@ const actions = {
   'load-seed': async () => {
     try {
       const data = await store.fetchSeed();
-      const months = new Set(data.rounds.map(r => r.date.slice(0, 7))).size;
-      const ok = await confirmSheet('Atualizar com a planilha?', `Troca as estatísticas dos ${months} meses que estão na planilha${store.mode === 'cloud' ? ', para todo mundo' : ''}. Fotos, apelidos, números, vínculo e nível dos atletas continuam como estão. Atletas novos da planilha são adicionados.`, 'Atualizar estatísticas', false);
+      await store._ensureBase();
+      const plan = store.planSheet(data);
+      const ign = plan.ignored;
+      const ok = await confirmSheet('Atualizar estatísticas pela planilha?',
+        `<b>${plan.months.size} meses</b> da planilha. <b>${plan.matched}</b> atletas da planilha encontrados no app recebem as estatísticas. Fotos, números, apelidos, vínculo e nível continuam como estão.`
+        + (ign.length ? `<br><br><b>${ign.length} nomes da planilha não estão no app e serão ignorados:</b> ${ign.map(esc).join(', ')}.` : '')
+        + (plan.replaced ? `<br><br>${plan.replaced} rodada(s) lançada(s) no app nesses meses serão trocadas pelo resumo da planilha.` : ''),
+        'Atualizar estatísticas', false);
       if (!ok) return;
-      const r = await store.importSheet(data);
-      toast(`Planilha aplicada: ${r.months} meses${r.newPlayers ? `, ${r.newPlayers} atletas novos` : ''}`);
+      const r = await store.importSheet(data, plan);
+      toast(`Planilha aplicada: ${r.months} meses, ${r.matched} atletas${r.ignored ? `, ${r.ignored} ignorados` : ''}`);
     } catch (e) { toast(e.message, true); }
   },
+
 
   'edit-month': el => editMonthSheet(+el.dataset.y, +el.dataset.m),
   'sheet-close-go': el => { closeSheet(); location.hash = el.getAttribute('href'); },
