@@ -125,7 +125,7 @@ function route() {
 }
 
 // Torcedor (sem login): só times sorteados, ranking e craque/time ideal. Masters veem tudo.
-const PUBLIC_ROUTES = ['sorteio', 'ranking', 'premios', 'ajustes'];
+const PUBLIC_ROUTES = ['sorteio', 'ranking', 'premios', 'ajustes', 'atleta'];
 const TABS_MASTER = [['inicio', 'Início', 'home'], ['ranking', 'Ranking', 'rank'], ['atletas', 'Atletas', 'cards'], ['sorteio', 'Sorteio', 'shuffle'], ['premios', 'Prêmios', 'trophy'], ['caixa', 'Caixa', 'cash']];
 const TABS_PUBLIC = [['sorteio', 'Times', 'shirt'], ['ranking', 'Ranking', 'rank'], ['premios', 'Craque do mês', 'trophy']];
 const TAB_ICONS = {
@@ -157,7 +157,7 @@ function render() {
     if (!store.authReady) { view.innerHTML = `<div class="boot"><img src="icons/logo-256.png" alt="" width="120"><p>Carregando a resenha…</p></div>`; return; }
     history.replaceState(null, '', '#/sorteio'); r = route();
   }
-  const tab = { caixa: 'caixa', partida: 'sorteio', inicio: 'inicio', rodada: 'inicio', lancar: 'inicio', ranking: 'ranking', atletas: 'atletas', atleta: 'atletas', sorteio: 'sorteio', premios: 'premios' }[r.name];
+  const tab = { caixa: 'caixa', partida: 'sorteio', inicio: 'inicio', rodada: 'inicio', lancar: 'inicio', ranking: 'ranking', atletas: 'atletas', atleta: store.isMaster ? 'atletas' : 'ranking', sorteio: 'sorteio', premios: 'premios' }[r.name];
   $$('.tabbar a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
   const chip = $('#masterChip');
   chip.hidden = !store.isMaster;
@@ -501,13 +501,13 @@ function vRanking() {
     const pos = v === lastV ? lastPos : i + 1; lastV = v; lastPos = pos;
     const t = T[p.id];
     const sub = g === 'G' ? `${t.p} presenças, ${t.pts} pts` : (k === 'pts' ? `${t.g} gols, ${t.a} assist., ${t.p} pres.` : `${t.p} presenças, ${t.pts} pts`);
-    const tag = store.isMaster ? `a href="#/atleta/${esc(p.id)}"` : 'div';
+    const tag = `a href="#/atleta/${esc(p.id)}"`;
     return `<${tag} class="row ${pos <= 3 ? 'top' + pos : ''}">
       <span class="pos">${pos}</span>${avatar(p)}
       <span><span class="nm">${esc(dn(p))}</span><br><span class="sub">${sub}</span></span>
-      <span class="v" style="${k === 'cards' ? 'font-size:18px' : ''}">${statShow(t, k)}</span></${store.isMaster ? 'a' : 'div'}>`;
+      <span class="v" style="${k === 'cards' ? 'font-size:18px' : ''}">${statShow(t, k)}</span></a>`;
   }).join('');
-  return `<div class="page-head"><div><h1>Ranking</h1><p>${store.isMaster ? 'Toque num atleta para ver o perfil.' : 'Por rodada, mês, ano ou desde o começo.'}</p></div></div>
+  return `<div class="page-head"><div><h1>Ranking</h1><p>Toque num atleta para ver o perfil e as estatísticas.</p></div></div>
     ${periodBar('rank')}
     ${store.isMaster && per.type === 'month' ? `<button class="btn sm block" style="margin:-6px 0 14px" data-act="edit-month" data-y="${per.y}" data-m="${per.m}">${I.edit}Editar estatísticas de ${C.MONTHS[per.m - 1].toLowerCase()}</button>` : ''}
     ${store.isMaster && per.type === 'round' && per.date ? `<a class="btn sm block" style="margin:-6px 0 14px" href="#/lancar/${per.date}">${I.edit}Editar esta rodada</a>` : ''}
@@ -596,7 +596,8 @@ function vAtleta(id) {
 
   const hist = C.sortedRounds(store.rounds).filter(r => r.entries?.[p.id]?.p).slice(0, 8);
   const level = p.level || 3;
-  return `<a class="back" href="#/atletas">${I.back}Atletas</a>
+  const M = store.isMaster;
+  return `<a class="back" href="${M ? '#/atletas' : '#/ranking'}">${I.back}${M ? 'Atletas' : 'Ranking'}</a>
     <div class="profile">
       ${figurinha(p, { link: false, full: true })}
       <div class="meta">
@@ -613,10 +614,10 @@ function vAtleta(id) {
         </div>
       </div>
     </div>
-    <div class="btn-row sec" style="margin-top:22px">
+    ${M ? `<div class="btn-row sec" style="margin-top:22px">
       <button class="btn" data-act="share-player" data-id="${esc(p.id)}">${I.share}Compartilhar figurinha</button>
-      ${store.isMaster ? `<button class="btn" data-act="player-edit" data-id="${esc(p.id)}">${I.edit}Editar</button>` : ''}
-    </div>
+      <button class="btn" data-act="player-edit" data-id="${esc(p.id)}">${I.edit}Editar</button>
+    </div>` : ''}
     <section class="sec">${periodBar('prof', ['month', 'year', 'all'])}
       <div class="stats">${tiles.map(([k, l, hot]) => `<div class="stat ${hot ? 'hot' : ''}"><b>${statShow(t, k)}</b><span>${l}</span></div>`).join('')}</div>
     </section>
@@ -627,9 +628,9 @@ function vAtleta(id) {
     <section class="sec"><div class="sec-head"><h2>Últimas rodadas</h2></div>
       ${hist.length ? `<div class="sheet-table">${hist.map(r => {
         const e = r.entries[p.id]; const aw = C.nightAwards(r);
-        return `<a class="st-row hist" href="#/rodada/${r.id}"><span class="num" style="font-size:${r.summary ? 17 : 20}px">${r.summary ? C.MONTHS_SHORT[+r.date.slice(5, 7) - 1] : C.fmtDate(r.date, { year: false })}</span>
+        return `<${M ? `a href="#/rodada/${r.id}"` : 'div'} class="st-row hist"><span class="num" style="font-size:${r.summary ? 17 : 20}px">${r.summary ? C.MONTHS_SHORT[+r.date.slice(5, 7) - 1] : C.fmtDate(r.date, { year: false })}</span>
           <span class="nm">${r.summary ? `<span class="badge blue">${e.p} pres.</span> ` : ''}${e.t ? `<span class="badge cream">${e.t > 1 ? e.t + ' títulos' : 'Campeão'}</span> ` : ''}${aw.art.includes(p.id) ? '<span class="badge">Artilheiro</span> ' : ''}${aw.gar.includes(p.id) ? '<span class="badge blue">Garçom</span>' : ''}</span>
-          <span class="line">${isG ? `<span><b>${e.cs || 0}</b> SG</span>` : `<span><b>${e.w || 0}</b>V <b>${e.d || 0}</b>E <b>${e.l || 0}</b>D</span>`}<span><b>${e.g || 0}</b> G</span><span><b>${e.a || 0}</b> A</span></span></a>`;
+          <span class="line">${isG ? `<span><b>${e.cs || 0}</b> SG</span>` : `<span><b>${e.w || 0}</b>V <b>${e.d || 0}</b>E <b>${e.l || 0}</b>D</span>`}<span><b>${e.g || 0}</b> G</span><span><b>${e.a || 0}</b> A</span></span></${M ? 'a' : 'div'}>`;
       }).join('')}</div>` : `<div class="empty"><p>Nenhuma rodada ainda.</p></div>`}
     </section>`;
 }
@@ -775,7 +776,7 @@ function vCaixa() {
       <div class="sheet-table">${fixed.map(f => `<button class="st-row cx-row" data-act="cx-fixed" data-k="${kind}" data-n="${esc(f.name)}">${ico}<span class="nm">${esc(f.name)}<small>${f.custom ? 'valor ajustado neste mês' : f.freq === 'mes' ? 'todo mês' : `${K.brl(f.unit)} × ${f.n} ${f.n === 1 ? 'pelada' : 'peladas'}`}</small></span><span class="line"><b>${K.brl(f.amount)}</b></span></button>`).join('')}</div>` : ''}
       <div class="sec-head" style="margin-top:20px"><h2>Lançadas</h2></div>
       ${list.length ? `<div class="sheet-table">${list.map(x => `<button class="st-row cx-row" data-act="cx-${kind}" data-id="${esc(x.id)}">${ico}
-        <span class="nm">${esc(K.entryLabel(x))}<small>${fmtD(x.date)}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma ${word} lançada à mão neste mês.</p></div>`}
+        <span class="nm">${esc(K.entryLabel(x))}<small>${x.qty > 1 ? `${x.qty} × ${K.brl(x.unit)} · ` : ''}${fmtD(x.date)}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma ${word} lançada à mão neste mês.</p></div>`}
       <div class="btn-row" style="margin-top:12px"><button class="btn primary" data-act="cx-${kind}">＋ Lançar ${word}</button><button class="btn" data-act="cx-type" data-k="${kind}">＋ Cadastrar outra ${word}</button></div>
       <button class="btn sm ghost" style="margin-top:8px" data-act="cx-types" data-k="${kind}">⚙ Tipos de ${word} e valores fixos</button>`;
   } else if (s.tab === 'total') {
@@ -919,30 +920,40 @@ function entrySheet(kind, id, cat) {
   const catList = (kind === 'exp' ? cxCfg().exp : cxCfg().inc).map(t => t.name);
   let c = (cur?.cat && cur.cat !== 'Outros') ? cur.cat : (cat || '');
   if (c && !catList.includes(c)) catList.push(c);
+  const unitOf = name => { const t = (kind === 'exp' ? cxCfg().exp : cxCfg().inc).find(t => t.name === name && +t.amount > 0); return t ? fmtNum(t.amount) : ''; };
   openSheet(`<h2>${cur ? 'Editar' : 'Nova'} ${kind === 'exp' ? 'despesa' : 'receita'}</h2>
     <div class="field"><label for="exDesc">Descrição</label><input class="input" id="exDesc" maxlength="60" value="${esc(cur?.desc || '')}" placeholder="${kind === 'exp' ? 'Ex.: Bola nova' : 'Ex.: Venda de camisas'}" ${cur || cat ? '' : 'autofocus'}></div>
     ${catList.length ? `<div class="field"><span class="lab">Tipo cadastrado <span class="muted small">(opcional)</span></span><div class="chips" id="exCat" style="margin:0">${catList.map(x => `<button type="button" class="chip ${x === c ? 'on' : ''}" data-x="cat" data-v="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>` : ''}
-    <div class="field"><label for="exVal">Valor</label><input class="input" id="exVal" inputmode="decimal" placeholder="0,00" value="${cur ? String(cur.amount).replace('.', ',') : (() => { const t = (kind === 'exp' ? cxCfg().exp : cxCfg().inc).find(t => t.name === c && t.freq === 'avulsa' && +t.amount > 0); return t ? String(t.amount).replace('.', ',') : ''; })()}"></div>
+    <div class="qty-row">
+      <div class="field"><label for="exQty">Quantidade</label><div class="qty"><button type="button" class="btn sm" data-x="q-">−</button><input class="input" id="exQty" inputmode="numeric" value="${cur?.qty || 1}"><button type="button" class="btn sm" data-x="q+">＋</button></div></div>
+      <div class="field"><label for="exVal">Valor unitário</label><input class="input" id="exVal" inputmode="decimal" placeholder="0,00" value="${cur ? fmtNum(cur.unit ?? cur.amount) : unitOf(c)}"></div>
+    </div>
+    <p class="cx-total-line">Total: <b id="exTot"></b></p>
     <div class="field"><label for="exDate">Data</label><input class="input" type="date" id="exDate" value="${cur?.date || today}"></div>
     <div class="field"><span class="lab">Comprovante</span><div id="exRec"></div></div>
     <button class="btn primary block" data-x="save">Salvar</button>
     ${cur ? '<button class="btn danger block" style="margin-top:8px" data-x="del">Apagar</button>' : ''}`, s => {
+    const qEl = s.querySelector('#exQty'), vEl = s.querySelector('#exVal');
+    const qty = () => Math.max(1, parseInt(qEl.value, 10) || 1);
+    const upd = () => { s.querySelector('#exTot').textContent = K.brl(qty() * (parseBRL(vEl.value) || 0)); };
+    qEl.addEventListener('input', upd); vEl.addEventListener('input', upd); upd();
     const drawRec = () => { s.querySelector('#exRec').innerHTML = rec ? `📎 ${esc(rec.receiptName || 'comprovante')} <button class="link" data-x="view">Ver</button> · <button class="link" data-x="att">Trocar</button>` : `<button class="btn sm" data-x="att">📎 Anexar comprovante (foto ou PDF)</button>`; };
     drawRec();
     s.addEventListener('click', async ev => {
       const b = ev.target.closest('[data-x]'); if (!b) return;
       const x = b.dataset.x;
-      if (x === 'cat') { c = c === b.dataset.v ? '' : b.dataset.v; s.querySelectorAll('#exCat .chip').forEach(e => e.classList.toggle('on', e.dataset.v === c)); }
+      if (x === 'cat') { c = c === b.dataset.v ? '' : b.dataset.v; s.querySelectorAll('#exCat .chip').forEach(e => e.classList.toggle('on', e.dataset.v === c)); if (c && unitOf(c)) { vEl.value = unitOf(c); upd(); } }
+      if (x === 'q-' || x === 'q+') { qEl.value = Math.max(1, qty() + (x === 'q+' ? 1 : -1)); upd(); return; }
       if (x === 'view') openReceipt(rec.receiptId);
       if (x === 'att') { try { const r = await attachReceipt(); if (r) { rec = r; drawRec(); toast('Comprovante anexado'); } } catch (e) { toast(e.message, true); } }
       if (x === 'save' || x === 'del') {
-        const amount = parseFloat(String(s.querySelector('#exVal').value).replace(/\./g, '').replace(',', '.'));
+        const unit = parseBRL(vEl.value), q = qty(), amount = Math.round(q * unit * 100) / 100;
         if (x === 'save' && !c && !s.querySelector('#exDesc').value.trim()) { toast('Coloque a descrição', true); return; }
         if (x === 'save' && !(amount > 0)) { toast('Coloque o valor', true); return; }
         const v2 = cxView(); let list = [...(v2.doc[listKey] || [])];
         if (x === 'del') list = list.filter(e => e.id !== id);
         else {
-          const item = { id: id || ('e-' + store.newId()), desc: s.querySelector('#exDesc').value.trim(), amount, date: s.querySelector('#exDate').value || today, cat: c, ...(rec || {}) };
+          const item = { id: id || ('e-' + store.newId()), desc: s.querySelector('#exDesc').value.trim(), amount, qty: q, unit, date: s.querySelector('#exDate').value || today, cat: c, ...(rec || {}) };
           list = id ? list.map(e => e.id === id ? item : e) : [...list, item];
         }
         v2.doc[listKey] = list; closeSheet();
@@ -1283,12 +1294,12 @@ function vPremios() {
 
   const mvp = A.mvp; const tm = T[mvp.id];
   const M = store.isMaster;
-  const craque = `<${M ? `a href="#/atleta/${esc(mvp.id)}"` : 'div'} class="craque">
+  const craque = `<a href="#/atleta/${esc(mvp.id)}" class="craque">
       ${figurinha(mvp, { link: false })}
       <div><div class="k">Craque do mês</div><h2>${esc(dn(mvp))}</h2>
         <div class="pts">${tm.pts}<small> pts</small></div>
         <div class="line">${mvp.pos === 'G' ? `<span class="pill">${tm.cs} sem sofrer</span>` : `<span class="pill">${tm.g} gols</span><span class="pill">${tm.a} assist.</span>`}<span class="pill">${tm.p}/${A.nRounds} presenças</span></div>
-      </div></${M ? 'a' : 'div'}>`;
+      </div></a>`;
   const val = (list, k) => list.length ? T[list[0].id][k] : 0;
   const hls = `<div class="highlights sec">
     ${hlCard('Artilheiro do mês', I.ball, A.artilheiro, val(A.artilheiro, 'g'), 'gols')}
@@ -1302,7 +1313,7 @@ function vPremios() {
   const rows = FORMATION[line.length] || [line.length];
   let k = 0;
   const bdg = monthBadges(A);
-  const spot = (p, gk) => `<${M ? `a href="#/atleta/${esc(p.id)}"` : 'span'} class="spot ${gk ? 'gk' : ''}"><span class="spot-av">${avatar(p)}${(bdg[p.id] || []).map((k, i) => `<span class="award a${i}" title="${AWARD_LABEL[k]}">${AWARD_SVG[k]}</span>`).join('')}</span><span class="nm">${esc(dn(p))}</span><span class="pt">${T[p.id].pts} pts</span></${M ? 'a' : 'span'}>`;
+  const spot = (p, gk) => `<a href="#/atleta/${esc(p.id)}" class="spot ${gk ? 'gk' : ''}"><span class="spot-av">${avatar(p)}${(bdg[p.id] || []).map((k, i) => `<span class="award a${i}" title="${AWARD_LABEL[k]}">${AWARD_SVG[k]}</span>`).join('')}</span><span class="nm">${esc(dn(p))}</span><span class="pt">${T[p.id].pts} pts</span></a>`;
   const pitch = `<div class="pitch" role="img" aria-label="Time ideal do mês">
     ${rows.map(n => `<div class="line">${line.slice(k, k += n).map(p => spot(p)).join('')}</div>`).join('')}
     ${A.time.gk ? `<div class="line">${spot(A.time.gk, true)}</div>` : ''}
@@ -1404,7 +1415,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 34.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 35.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================

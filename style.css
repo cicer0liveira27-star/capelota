@@ -670,3 +670,11 @@ button.cx-card.in b { color: #3ccf8e; }
 .sheet h2 { padding-right: 46px; }
 /* campo de data não estoura a largura no iPhone */
 .sheet input[type="date"], .sheet input[type="time"] { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; -webkit-appearance: none; appearance: none; text-align: left; }
+
+/* quantidade × valor unitário */
+.qty-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.qty { display: flex; gap: 6px; align-items: center; }
+.qty .input { text-align: center; min-width: 0; }
+.qty .btn { min-width: 40px; padding: 0; }
+.cx-total-line { margin: -4px 0 14px; color: var(--texto-2); }
+.cx-total-line b { color: var(--texto); font-size: 18px; }
