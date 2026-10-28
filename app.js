@@ -218,12 +218,13 @@ function debtReminder() {
   if (!list.length) return;
   state.debtShown = true;
   const y = +today.slice(0, 4), m = +today.slice(5, 7);
-  const due = K.dueDate(y, m);
   const total = list.reduce((a, f) => a + f.amount, 0);
-  const pix = store.finance[K.monthKey(y, m)]?.pix;
+  const pix = store.finance[K.monthKey(y, m)]?.pix || [...list].reverse().map(f => store.finance[K.monthKey(f.y, f.m)]?.pix).find(Boolean);
+  const months = [...new Set(list.map(f => K.monthKey(f.y, f.m)))];
+  const due1 = K.dueDate(list[0].y, list[0].m);
   openSheet(`<h2>⚠️ Mensalidade em atraso</h2>
-    <p class="muted">A mensalidade de ${C.MONTHS[m - 1].toLowerCase()} venceu ${today === due ? '<b>hoje</b>, no dia da primeira pelada' : 'em ' + fmtD(due) + ', dia da primeira pelada'}. Ainda ${list.length === 1 ? 'falta 1 mensalista' : `faltam ${list.length} mensalistas`}:</p>
-    <div class="sheet-table" style="margin-top:10px">${list.map(f => `<div class="st-row">${avatar(f.p, 's')}<span class="nm">${esc(dn(f.p))}<small>Mensalidade em aberto</small></span><span class="line"><b>${K.brl(f.amount)}</b>${pill(false, '', 'Inadimplente')}</span></div>`).join('')}</div>
+    <p class="muted">A mensalidade vence no dia da primeira pelada do mês${months.length === 1 ? ` (${C.MONTHS[list[0].m - 1].toLowerCase()} venceu ${today === due1 ? '<b>hoje</b>' : 'em ' + fmtD(due1)})` : ''}. ${list.length === 1 ? 'Falta cobrar 1 mensalidade' : `Faltam cobrar ${list.length} mensalidades`}:</p>
+    <div class="sheet-table" style="margin-top:10px">${list.map(f => `<div class="st-row">${avatar(f.p, 's')}<span class="nm">${esc(dn(f.p))}<small>${C.MONTHS[f.m - 1]} em aberto</small></span><span class="line"><b>${K.brl(f.amount)}</b>${pill(false, '', 'Inadimplente')}</span></div>`).join('')}</div>
     <p class="hint" style="margin-top:10px">Total a receber: <b>${K.brl(total)}</b>${pix ? ` · PIX: <b>${esc(pix)}</b>` : ''}</p>
     <div class="btn-row" style="margin-top:12px"><button class="btn primary" data-act="cx-debt">Abrir o caixa</button><button class="btn ghost" data-act="sheet-close">Fechar</button></div>`);
 }
@@ -1292,7 +1293,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 27.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 28.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2117,7 +2118,7 @@ const actions = {
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
   },
   'cx-step': el => { let { y, m } = state.cx; m += +el.dataset.d; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; } state.cx.y = y; state.cx.m = m; render(); },
-  'cx-debt': () => { closeSheet(); Object.assign(state.cx, { y: thisY(), m: thisM(), tab: 'mens', filter: 'inad' }); if (location.hash === '#/caixa') render(); else location.hash = '#/caixa'; },
+  'cx-debt': () => { closeSheet(); const o = K.overdue(store.players, store.rounds, store.finance, C.isoDate(now()))[0]; Object.assign(state.cx, { y: o?.y || thisY(), m: o?.m || thisM(), tab: 'mens', filter: 'inad' }); if (location.hash === '#/caixa') render(); else location.hash = '#/caixa'; },
   'cx-tab': el => { state.cx.tab = el.dataset.t; render(); },
   'cx-filter': el => { state.cx.filter = el.dataset.f; render(); },
   'cx-fee': el => feeSheet(el.dataset.id),

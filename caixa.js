@@ -61,46 +61,16 @@ export function dueDate(y, m) {
   return `${y}-${String(m).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Quem está devendo a mensalidade do mês depois do vencimento (lista vazia antes do dia)
+// Quem está devendo mensalidade: meses anteriores em aberto + o mês atual depois do vencimento
 export function overdue(players, rounds, finance, today) {
   const y = +today.slice(0, 4), m = +today.slice(5, 7);
-  const key = monthKey(y, m);
-  if (key < FINANCE_START || today < dueDate(y, m)) return [];
-  return monthView(players, rounds, y, m, finance?.[key]).fees.filter(f => !f.paid);
-}
-
-// Resultado de todos os meses salvos até (e incluindo) o mês pedido
-export function saldoAcumulado(players, rounds, finance, y, m) {
-  const until = monthKey(y, m);
-  return Object.keys(finance || {}).filter(k => k <= until).sort().reduce((s, k) => {
-    const [yy, mm] = k.split('-').map(Number);
-    return s + monthView(players, rounds, yy, mm, finance[k]).totals.resultado;
-  }, 0);
-}
-
-// Guarda no doc só o necessário
-export function toDoc(view) {
-  const d = view.doc;
-  return { prices: d.prices, pix: d.pix || '', fees: d.fees || {}, daily: d.daily || {}, expenses: d.expenses || [], income: d.income || [] };
-}
-
-// Lê arquivo (foto ou PDF) e devolve dataURL leve para guardar
-export async function readReceipt(file) {
-  if (!file) return null;
-  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-    if (file.size > 700 * 1024) throw new Error('PDF muito grande (máx. 700 KB). Mande uma foto do comprovante.');
-    const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
-    return { name: file.name, type: 'pdf', data };
+  const out = [];
+  let yy = +FINANCE_START.slice(0, 4), mm = +FINANCE_START.slice(5, 7);
+  while (yy < y || (yy === y && mm <= m)) {
+    const key = monthKey(yy, mm);
+    if (!(yy === y && mm === m) || today >= dueDate(y, m))
+      monthView(players, rounds, yy, mm, finance?.[key]).fees.filter(f => !f.paid).forEach(f => out.push({ ...f, y: yy, m: mm }));
+    mm++; if (mm > 12) { mm = 1; yy++; }
   }
-  // imagem: reduz para no máximo 1280 px e JPEG
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-    const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
-    const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    let q = 0.75, data = c.toDataURL('image/jpeg', q);
-    while (data.length > 900 * 1024 && q > 0.35) { q -= 0.1; data = c.toDataURL('image/jpeg', q); }
-    return { name: file.name || 'comprovante.jpg', type: 'img', data };
-  } finally { URL.revokeObjectURL(url); }
+  return out;
 }
