@@ -24,8 +24,8 @@ export function getConfig(finance) {
 const isMonthKey = k => /^\d{4}-\d{2}$/.test(k);
 export const METHODS = ['PIX', 'Dinheiro', 'Cartão'];
 
-// O caixa só conta a partir de novembro/2026: meses anteriores ficam fora das contas (todos quitados)
-export const FINANCE_START = '2026-11';
+// O caixa só conta a partir de outubro/2026: meses anteriores ficam fora das contas (todos quitados)
+export const FINANCE_START = '2026-10';
 
 export const brl = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 export const monthKey = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
