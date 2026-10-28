@@ -67,6 +67,11 @@ function avatar(p, size = '') {
   return `<span class="av ${size} ${colorClass(p.id)}">${esc(initials(p))}</span>`;
 }
 
+// Vínculo do atleta com a pelada
+const TIPOS = { M: 'Mensalista', DG: 'Diarista do grupo', DN: 'Diarista novo' };
+const tipoOf = p => (p && TIPOS[p.tipo]) ? p.tipo : 'M';
+const flag = (p, cls = '') => p ? `<span class="flag t-${tipoOf(p)} ${cls}">${TIPOS[tipoOf(p)]}</span>` : '';
+
 function figurinha(p, opts = {}) {
   const t = opts.totals;
   const tag = p.pos === 'G' ? 'Goleiro' : 'Linha';
@@ -77,7 +82,7 @@ function figurinha(p, opts = {}) {
     ? `<span><b>${t.cs}</b> sem sofrer</span><span><b>${t.p}</b> jogos</span>`
     : `<span><b>${t.g}</b> gols</span><span><b>${t.a}</b> assist.</span>`) : '';
   const inner = `
-    <div class="ph">${photo}${p.num ? `<span class="shirt">${esc(p.num)}</span>` : ''}<span class="tag">${tag}</span></div>
+    <div class="ph">${photo}${p.num ? `<span class="shirt">${esc(p.num)}</span>` : ''}<span class="tag">${tag}</span>${flag(p, 'on-photo')}</div>
     <div class="band"><div class="n">${esc(dn(p))}</div>${stats ? `<div class="s">${stats}</div>` : (p.nick && opts.full ? `<div class="s">${esc(p.name)}</div>` : '')}</div>`;
   if (opts.link === false) return `<div class="fig ${p.active === false ? 'off' : ''}">${inner}</div>`;
   return `<a class="fig ${p.active === false ? 'off' : ''}" href="#/atleta/${esc(p.id)}">${inner}</a>`;
@@ -494,12 +499,14 @@ function pointsHint() {
 }
 
 // ================= ATLETAS (álbum) =================
+const albumMatch = (p, f) => f === 'all' || (f === 'G' ? p.pos === 'G' : f === 'L' ? p.pos !== 'G' : tipoOf(p) === f);
+
 function vAtletas() {
   const { totals: T } = C.aggregate(store.rounds, store.players, { type: 'year', y: thisY() }, store.settings);
   const q = state.search.trim().toLowerCase();
   const f = state.albumFilter;
   const list = store.players
-    .filter(p => f === 'all' || (f === 'G' ? p.pos === 'G' : p.pos !== 'G'))
+    .filter(p => albumMatch(p, f))
     .filter(p => !q || (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q))
     .sort((a, b) => dn(a).localeCompare(dn(b)));
   const act = list.filter(p => p.active !== false), off = list.filter(p => p.active === false);
@@ -511,6 +518,9 @@ function vAtletas() {
       <button class="chip ${f === 'all' ? 'on' : ''}" data-act="album-filter" data-f="all">Todos</button>
       <button class="chip ${f === 'L' ? 'on' : ''}" data-act="album-filter" data-f="L">Linha</button>
       <button class="chip ${f === 'G' ? 'on' : ''}" data-act="album-filter" data-f="G">Goleiros</button>
+      <button class="chip ${f === 'M' ? 'on' : ''}" data-act="album-filter" data-f="M">Mensalistas</button>
+      <button class="chip ${f === 'DG' ? 'on' : ''}" data-act="album-filter" data-f="DG">Diaristas do grupo</button>
+      <button class="chip ${f === 'DN' ? 'on' : ''}" data-act="album-filter" data-f="DN">Diaristas novos</button>
     </div>` : ''}
     <div id="albumBody">${albumBody(act, off, card)}</div>`;
 }
@@ -566,6 +576,7 @@ function vAtleta(id) {
         ${p.nick ? `<p class="nick">${esc(p.name)}</p>` : ''}
         <div class="facts">
           <span class="pill ${isG ? '' : 'red'}">${isG ? 'Goleiro' : 'Linha'}</span>
+          <span class="pill flag-pill t-${tipoOf(p)}">${TIPOS[tipoOf(p)]}</span>
           ${p.num ? `<span class="pill">Camisa ${esc(p.num)}</span>` : ''}
           ${store.isPlayerMaster(p.id) ? `<span class="pill red">${store.commission.some(m => m.playerId === p.id && m.founder) ? 'Fundador do site' : 'Membro da comissão'}</span>` : ''}
           <span class="pill">${ta.p} ${ta.p === 1 ? 'presença' : 'presenças'}</span>
@@ -602,7 +613,7 @@ function publishedTeams(compact) {
   const when = pub.date ? C.fmtDate(pub.date, { year: false }) : '';
   return `<div class="teams">${pub.teams.map((t, i) => `
       <div class="team"><div class="team-h"><span class="dot" style="background:${TEAM_COLORS[i % 4]}"></span><h3>${esc(t.name || TEAM_NAMES[i])}</h3><span class="str">${t.ids.length} atletas</span></div>
-        <ul>${t.ids.map(id => { const p = playerById(id); return `<li>${avatar(p, 's')}${esc(dn(p))}${p?.pos === 'G' ? '<span class="gk">GOL</span>' : ''}</li>`; }).join('')}</ul></div>`).join('')}</div>
+        <ul>${t.ids.map(id => { const p = playerById(id); return `<li>${avatar(p, 's')}<span class="li-nm">${esc(dn(p))}${flag(p)}</span>${p?.pos === 'G' ? '<span class="gk">GOL</span>' : ''}</li>`; }).join('')}</ul></div>`).join('')}</div>
     ${compact ? '' : `<p class="hint" style="margin-top:10px">Sorteio de ${when}${pub.by ? `, publicado por ${esc(pub.by)}` : ''}.</p>`}`;
 }
 
@@ -631,7 +642,7 @@ function vSorteio() {
       <div class="teams ${d.animate ? 'reveal' : ''}">${d.result.map((t, i) => `
         <div class="team"><div class="team-h"><span class="dot" style="background:${TEAM_COLORS[i]}"></span><h3>${TEAM_NAMES[i]}</h3>
           <span class="str">${t.length} atletas${store.isMaster ? `, força ${lastSum(t)}` : ''}</span></div>
-          <ul>${t.map((id, j) => { const p = playerById(id); return `<li style="animation-delay:${(j * d.result.length + i) * 70}ms">${avatar(p, 's')}${esc(dn(p))}${p?.pos === 'G' ? '<span class="gk">GOL</span>' : ''}</li>`; }).join('')}</ul>
+          <ul>${t.map((id, j) => { const p = playerById(id); return `<li style="animation-delay:${(j * d.result.length + i) * 70}ms">${avatar(p, 's')}<span class="li-nm">${esc(dn(p))}${flag(p)}</span>${p?.pos === 'G' ? '<span class="gk">GOL</span>' : ''}</li>`; }).join('')}</ul>
         </div>`).join('')}</div>
       <div class="btn-row" style="margin-top:12px">
         <button class="btn" data-act="draw-share">${I.whats}Mandar no grupo</button>
@@ -648,11 +659,12 @@ function vSorteio() {
     <div class="sec-head"><h3>Quem vai jogar</h3><span class="muted small"><b class="num" style="font-size:20px;color:var(--texto)">${sel.length}</b> marcados</span></div>
     <div class="chips" style="margin-bottom:10px">
       <button class="chip" data-act="draw-all">Marcar todos</button>
+      <button class="chip" data-act="draw-mens">Marcar mensalistas</button>
       <button class="chip" data-act="draw-last">Mesmos da última rodada</button>
       <button class="chip" data-act="draw-none">Limpar</button>
     </div>
     <div class="pick">${active.map(p => `<button class="pk ${d.sel.has(p.id) ? 'on' : ''}" data-act="draw-toggle" data-id="${esc(p.id)}" aria-pressed="${d.sel.has(p.id)}">
-      ${p.pos === 'G' ? '<span class="gk">GOL</span>' : ''}${avatar(p)}<span class="nm">${esc(dn(p))}</span></button>`).join('')}</div>
+      ${p.pos === 'G' ? '<span class="gk">GOL</span>' : ''}${avatar(p)}<span class="nm">${esc(dn(p))}</span>${flag(p)}</button>`).join('')}</div>
 
     <section class="sec">
       <div class="field"><span class="lab">Quantos times</span>
@@ -817,7 +829,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 10.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 11.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -868,7 +880,7 @@ function edPlayer(p) {
       </div>`;
   return `<div class="pe ${on ? 'on' : ''}" id="pe-${esc(p.id)}">
     <button class="pe-head" data-act="ed-toggle" data-pid="${esc(p.id)}" aria-pressed="${on}">${avatar(p)}
-      <span class="nm">${esc(dn(p))}<small>${isG ? 'Goleiro' : 'Linha'}${on ? '' : ', toque para marcar presença'}</small></span>
+      <span class="nm">${esc(dn(p))}<small>${flag(p)} ${isG ? 'Goleiro' : 'Linha'}${on ? '' : ', toque para marcar presença'}</small></span>
       <span class="check">${I.check}</span></button>
     ${stats}</div>`;
 }
@@ -1061,9 +1073,9 @@ function nameSheet() {
 let formPhoto = null;
 function playerSheet(p) {
   const isNew = !p;
-  p = p || { name: '', nick: '', pos: 'L', num: '', level: 3, active: true, photo: '' };
+  p = p || { name: '', nick: '', pos: 'L', tipo: 'M', num: '', level: 3, active: true, photo: '' };
   formPhoto = p.photo || '';
-  let pos = p.pos || 'L', level = p.level || 3, active = p.active !== false;
+  let pos = p.pos || 'L', level = p.level || 3, active = p.active !== false, tipo = tipoOf(p);
   const wasMaster = !isNew && store.isPlayerMaster(p.id);
   const founder = !isNew && store.commission.some(m => m.playerId === p.id && m.founder);
   const mrec = !isNew ? store.commission.find(m => m.playerId === p.id) : null;
@@ -1079,6 +1091,7 @@ function playerSheet(p) {
       </div></div>
     <div class="field"><label for="pfName">Nome</label><input class="input" id="pfName" required maxlength="40" value="${esc(p.name)}" placeholder="Nome do atleta"></div>
     <div class="field"><label for="pfNick">Apelido</label><input class="input" id="pfNick" maxlength="20" value="${esc(p.nick)}" placeholder="Como a galera chama"><span class="hint">Se preencher, o apelido aparece no lugar do nome.</span></div>
+    <div class="field"><span class="lab">Vínculo</span><div class="seg tipo-seg">${Object.entries(TIPOS).map(([k, l]) => `<button type="button" class="${tipo === k ? 'on' : ''}" data-pf="tipo" data-v="${k}">${l.replace('Diarista ', 'Diarista<br>')}</button>`).join('')}</div></div>
     <div class="field"><span class="lab">Posição</span><div class="seg"><button type="button" class="${pos === 'L' ? 'on' : ''}" data-pf="pos" data-v="L">Linha</button><button type="button" class="${pos === 'G' ? 'on' : ''}" data-pf="pos" data-v="G">Goleiro</button></div></div>
     <div class="field"><label for="pfNum">Número da camisa</label><input class="input" id="pfNum" inputmode="numeric" maxlength="3" value="${esc(p.num)}" placeholder="Opcional"></div>
     <div class="field"><span class="lab">Nível para o sorteio</span><div class="level-pick">${[1, 2, 3, 4, 5].map(n => `<button type="button" class="${n <= level ? 'on' : ''}" data-pf="level" data-v="${n}" aria-label="Nível ${n}">${n}</button>`).join('')}</div>
@@ -1102,6 +1115,7 @@ function playerSheet(p) {
       const b = ev.target.closest('[data-pf]'); if (!b) return;
       const a = b.dataset.pf;
       if (a === 'pos') { pos = b.dataset.v; redraw(); }
+      if (a === 'tipo') { tipo = b.dataset.v; redraw(); }
       if (a === 'level') { level = +b.dataset.v; redraw(); }
       if (a === 'active') { active = !active; b.setAttribute('aria-checked', active); }
       if (a === 'master' && !founder) { masterOn = !masterOn; redraw(); if (masterOn && !wasMaster) setTimeout(() => $('#pfCpf', s)?.focus(), 50); }
@@ -1120,7 +1134,7 @@ function playerSheet(p) {
         const promote = masterOn && !wasMaster, demote = !masterOn && wasMaster;
         if (promote && !validCpf(v.cpf)) { $('#pfCpf', s)?.focus(); toast('CPF inválido. Confira os números.', true); return; }
         const id = p.id || store.newId();
-        const data = { id, createdAt: p.createdAt || Date.now(), name: v.name.trim(), nick: v.nick.trim(), num: onlyDigits(v.num), pos, level, active, photo: formPhoto };
+        const data = { id, createdAt: p.createdAt || Date.now(), name: v.name.trim(), nick: v.nick.trim(), num: onlyDigits(v.num), pos, tipo, level, active, photo: formPhoto };
         if (promote || demote) {
           const who = data.nick || data.name;
           closeSheet();
@@ -1526,6 +1540,7 @@ const actions = {
 
   // sorteio
   'draw-toggle': el => { const id = el.dataset.id; state.draw.sel.has(id) ? state.draw.sel.delete(id) : state.draw.sel.add(id); saveDraw(); state.draw.animate = false; render(); },
+  'draw-mens': () => { store.players.filter(p => p.active !== false && tipoOf(p) === 'M').forEach(p => state.draw.sel.add(p.id)); saveDraw(); render(); },
   'draw-all': () => { store.players.filter(p => p.active !== false).forEach(p => state.draw.sel.add(p.id)); saveDraw(); render(); },
   'draw-none': () => { state.draw.sel.clear(); state.draw.result = null; saveDraw(); render(); },
   'draw-last': () => {
@@ -1666,7 +1681,7 @@ document.addEventListener('input', ev => {
     // atualiza só o álbum para não perder o foco
     const { totals: T } = C.aggregate(store.rounds, store.players, { type: 'year', y: thisY() }, store.settings);
     const q = state.search.trim().toLowerCase(), f = state.albumFilter;
-    const list = store.players.filter(p => f === 'all' || (f === 'G' ? p.pos === 'G' : p.pos !== 'G'))
+    const list = store.players.filter(p => albumMatch(p, f))
       .filter(p => !q || (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q)).sort((a, b) => dn(a).localeCompare(dn(b)));
     $('#albumBody').innerHTML = albumBody(list.filter(p => p.active !== false), list.filter(p => p.active === false), p => figurinha(p, { totals: T[p.id] || C.zero() }));
   }

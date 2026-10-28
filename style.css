@@ -570,3 +570,18 @@ details.panel summary::-webkit-details-marker { color: var(--texto-3); }
 .master-box { border: 1px dashed var(--risca); border-radius: 14px; padding: 12px 14px; margin: 4px 0 16px; }
 .master-box.on { border-style: solid; border-color: color-mix(in srgb, var(--sombrero) 55%, var(--risca)); background: color-mix(in srgb, var(--sombrero) 8%, transparent); }
 .switch[disabled] { opacity: .5; }
+
+/* vínculo: mensalista / diarista do grupo / diarista novo (estilo "Convidado") */
+.flag { display: block; font-size: 11.5px; font-weight: 700; line-height: 1.2; color: var(--couro-2); }
+.flag.t-M { color: var(--couro-2); }
+.flag.t-DG { color: var(--braco-claro); }
+.flag.t-DN { color: var(--amarelo); }
+.pk .flag { margin-top: -2px; }
+.pe-head .nm small .flag { display: inline; margin-right: 4px; }
+.li-nm { display: flex; flex-direction: column; line-height: 1.15; }
+.flag.on-photo { position: absolute; left: 6px; bottom: 6px; padding: 3px 7px; border-radius: 6px; background: rgba(10,15,30,.78); font-size: 11px; }
+.fig .shirt + .tag + .flag.on-photo, .fig .tag + .flag.on-photo { }
+.flag-pill.t-M { color: var(--couro); border-color: color-mix(in srgb, var(--couro) 40%, transparent); }
+.flag-pill.t-DG { color: var(--braco-claro); border-color: color-mix(in srgb, var(--braco-claro) 45%, transparent); }
+.flag-pill.t-DN { color: var(--amarelo); border-color: color-mix(in srgb, var(--amarelo) 50%, transparent); }
+.tipo-seg button { font-size: 13px; line-height: 1.15; padding: 4px 2px; min-height: 46px; }
