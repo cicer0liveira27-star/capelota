@@ -170,7 +170,21 @@ function render() {
   view.classList.remove('has-savebar');
   const views = { inicio: vInicio, ranking: vRanking, atletas: vAtletas, atleta: vAtleta, sorteio: vSorteio, premios: vPremios, ajustes: vAjustes, rodada: vRodada, lancar: vLancar, partida: vPartida, caixa: vCaixa };
   const fn = views[r.name] || vInicio;
+  // guarda a rolagem lateral das fileiras de abas/filtros para não voltar ao começo a cada toque
+  const sameRoute = state.lastRendered === location.hash;
+  const sx = sameRoute ? [...view.querySelectorAll('.chips, .seg')].map(e => e.scrollLeft) : [];
   view.innerHTML = fn(r.arg);
+  state.lastRendered = location.hash;
+  const rows = [...view.querySelectorAll('.chips, .seg')];
+  rows.forEach((e, i) => {
+    if (sx[i]) e.scrollLeft = sx[i];
+    // se o item escolhido ficou fora da tela, traz ele para perto
+    const on = e.querySelector('.on');
+    if (on && e.scrollWidth > e.clientWidth) {
+      const l = on.getBoundingClientRect().left - e.getBoundingClientRect().left + e.scrollLeft, rgt = l + on.offsetWidth;
+      if (l < e.scrollLeft || rgt > e.scrollLeft + e.clientWidth) e.scrollLeft = Math.max(0, l - 16);
+    }
+  });
 }
 
 let lastRoute = '';
@@ -1415,7 +1429,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 35.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 36.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
