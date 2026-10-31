@@ -1208,10 +1208,16 @@ function vPartida() {
     const head = last ? (last.winner != null ? `${tName(l, last.winner)} venceu` : 'Empate') : 'Próxima partida';
     const sub = last ? (last.winner != null ? `${tName(l, last.a)} ${last.ga} × ${last.gb} ${tName(l, last.b)}. ${tName(l, last.winner)} fica em campo.` : `${tName(l, last.a)} ${last.ga} × ${last.gb} ${tName(l, last.b)}. As duas equipes saem e entram os times de fora.`) : '';
     return `<a class="back" href="#/inicio">${I.back}Início</a><div class="page-head"><div><h1>${head}</h1><p>${sub}</p></div></div>
-      <div class="lbl-sm">${l.stay != null ? `Adversário de ${tName(l, fixed)}` : `Entra com ${tName(l, fixed)}`} (toque para escolher)</div>
+      ${tied.length > 1 ? `
+      <div class="lbl-sm">${l.stay != null ? 'Fica em campo' : 'Entra'}</div>
+      <div class="lv-next"><div class="lv-team on">${tDot(fixed)}<b>${tName(l, fixed)}</b><span>${pc[fixed]} ${pc[fixed] === 1 ? 'partida' : 'partidas'}${l.stay != null ? ' · venceu' : ''}</span><small>${l.teams[fixed].ids.map(id => esc(dn(playerById(id)))).join(', ')}</small></div></div>
+      <div class="lbl-sm" style="margin-top:14px">Adversário: sorteio entre ${tied.map(i => tName(l, i)).join(' e ')} (${minPc} ${minPc === 1 ? 'jogo' : 'jogos'} cada)</div>
+      ${l.raffle && l.raffle.h === l.history.length ? `<div class="raffle-win" style="font-size:24px;padding:16px;margin-top:8px">🎲 ${tDot(l.raffle.pick)}<b>${tName(l, l.raffle.pick)}</b></div>
+      <button class="btn primary block" style="margin-top:12px;min-height:56px;font-size:17px" data-act="live-next" data-opp="${l.raffle.pick}">▶ ${tName(l, fixed)} × ${tName(l, l.raffle.pick)}</button>`
+      : `<button class="btn primary block" style="margin-top:8px;min-height:56px;font-size:17px" data-act="live-raffle">🎲 Sortear quem entra</button>`}` : `
+      <div class="lbl-sm">${l.stay != null ? `Adversário de ${tName(l, fixed)}` : `Entra com ${tName(l, fixed)}`}</div>
       <div class="lv-next">${pool.map(ti => `<button class="lv-team ${ti === b ? 'on' : ''}" data-act="live-next" data-opp="${ti}">${tDot(ti)}<b>${tName(l, ti)}</b><span>${pc[ti]} ${pc[ti] === 1 ? 'partida' : 'partidas'}${ti === b ? ' · próximo' : ''}</span><small>${l.teams[ti].ids.map(id => esc(dn(playerById(id)))).join(', ')}</small></button>`).join('')}</div>
-      ${tied.length > 1 ? `<button class="btn block" style="margin-top:10px" data-act="live-raffle">🎲 Sortear quem entra (${tied.map(i => tName(l, i)).join(' ou ')} têm ${minPc} ${minPc === 1 ? 'jogo' : 'jogos'})</button>` : ''}
-      <button class="btn primary block" style="margin-top:12px;min-height:56px;font-size:17px" data-act="live-next" data-opp="${b}">▶ ${tName(l, fixed)} × ${tName(l, b)}</button>
+      <button class="btn primary block" style="margin-top:12px;min-height:56px;font-size:17px" data-act="live-next" data-opp="${b}">▶ ${tName(l, fixed)} × ${tName(l, b)}</button>`}
       <section class="sec">${table}<div class="lbl-sm" style="margin-top:12px">Partidas da noite</div>${hist || '<p class="hint">Nenhuma ainda.</p>'}</section>
       <div class="btn-row sec"><button class="btn" data-act="live-edit-teams">Ajustar times e nomes</button><button class="btn danger" data-act="live-finish">Encerrar a noite</button></div>
       <button class="btn ghost block" style="margin-top:8px" data-act="live-discard">Descartar a noite sem lançar (teste)</button>`;
@@ -1617,7 +1623,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 41.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 42.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2503,7 +2509,9 @@ const actions = {
   'live-raffle': () => {
     const l = L.loadLive(); if (!l || l.match) return;
     const { fixed, tied } = L.nextOptions(l); if (tied.length < 2) return;
-    const pick = tied[Math.floor(Math.random() * tied.length)];
+    // o sorteio vale uma vez só: fechar e sortear de novo não muda o resultado
+    if (!(l.raffle && l.raffle.h === l.history.length)) { l.raffle = { h: l.history.length, pick: tied[Math.floor(Math.random() * tied.length)] }; L.saveLive(l); render(); }
+    const pick = l.raffle.pick;
     openSheet(`<h2>🎲 Sorteio</h2><p class="muted" style="margin-bottom:14px">Entre ${tied.map(i => tName(l, i)).join(' e ')}, quem entra é:</p>
       <div class="raffle-win">${tDot(pick)}<b>${tName(l, pick)}</b></div>
       <button class="btn primary block" style="margin-top:14px" data-act="live-next-close" data-opp="${pick}">▶ ${tName(l, fixed)} × ${tName(l, pick)}</button>`);
