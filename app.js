@@ -1110,7 +1110,8 @@ function vPartida() {
       <div class="lv-next">${l.queue.map((ti, k) => `<button class="lv-team ${k === 0 ? 'on' : ''}" data-act="live-next" data-opp="${ti}">${tDot(ti)}<b>${tName(l, ti)}</b><span>${k === 0 ? 'Próximo da fila' : 'Na fila'}</span><small>${l.teams[ti].ids.map(id => esc(dn(playerById(id)))).join(', ')}</small></button>`).join('')}</div>
       <button class="btn primary block" style="margin-top:14px;min-height:56px;font-size:17px" data-act="live-next" data-opp="${l.queue[0]}">▶ ${tName(l, keep)} × ${tName(l, l.queue[0])}</button>
       <section class="sec">${table}<div class="lbl-sm" style="margin-top:12px">Partidas da noite</div>${hist || '<p class="hint">Nenhuma ainda.</p>'}</section>
-      <div class="btn-row sec"><button class="btn" data-act="live-edit-teams">Ajustar times</button><button class="btn danger" data-act="live-finish">Encerrar a noite</button></div>`;
+      <div class="btn-row sec"><button class="btn" data-act="live-edit-teams">Ajustar times</button><button class="btn danger" data-act="live-finish">Encerrar a noite</button></div>
+      <button class="btn ghost block" style="margin-top:8px" data-act="live-discard">Descartar a noite sem lançar (teste)</button>`;
   }
 
   const m = l.match;
@@ -1435,7 +1436,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 37.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 38.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2297,6 +2298,10 @@ const actions = {
   'live-end': () => liveEndFlow('Encerrar partida'),
   'live-next': el => { const l = L.loadLive(); if (!l) return; L.nextMatch(l, +el.dataset.opp); L.saveLive(l); keepAwake(true); render(); window.scrollTo(0, 0); },
   'live-finish': () => liveFinish(),
+  'live-discard': async () => {
+    const ok = await confirmSheet('Descartar a noite?', 'Tudo que foi contado nesta noite (partidas, gols, cartões) some e nada vai para as estatísticas. Bom para testar.', 'Descartar');
+    if (ok) { L.saveLive(null); keepAwake(false); toast('Noite descartada'); location.hash = '#/sorteio'; }
+  },
   'live-edit-teams': () => liveEditTeams(),
   'draw-publish': async el => {
     const teams = state.draw.result.map((ids, i) => ({ name: TEAM_NAMES[i], ids }));
