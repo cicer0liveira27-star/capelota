@@ -717,3 +717,4 @@ button.cx-card.in b { color: #3ccf8e; }
 .lv-class td.pts { font-family: var(--fd); font-weight: 900; font-size: 18px; }
 .lv-class tr.lead td { background: color-mix(in srgb, var(--faixa) 14%, transparent); }
 .lv-class .pos-sg { color: #3ccf8e; } .lv-class .neg-sg { color: var(--sombrero-claro); }
+.live-banner.done { background: color-mix(in srgb, var(--braco, #3c8ea6) 18%, var(--vest)); border-color: var(--risca); }

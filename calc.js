@@ -168,6 +168,22 @@ export function monthAwards(rounds, players, y, m, settings) {
   };
 }
 
+// Destaques de uma rodada: melhor time (5 de linha com mais pontos + goleiro menos vazado), artilheiro, garçom
+export function roundAwards(rounds, players, date, settings) {
+  const { totals: T } = aggregate(rounds.filter(r => !r.summary), players, { type: 'round', date }, settings);
+  const played = players.filter(p => T[p.id] && T[p.id].p > 0);
+  const line = played.filter(p => p.pos !== 'G').sort(byPts(T));
+  const gks = rankGoalkeepers(played.filter(p => p.pos === 'G'), T);
+  return {
+    totals: T,
+    artilheiro: topGroup(played, T, 'g'),
+    garcom: topGroup(played, T, 'a'),
+    mvp: line[0] || null,
+    goleiro: gks[0] || null,
+    time: { gk: gks[0] || null, line: line.slice(0, 5) }
+  };
+}
+
 export function monthsWithRounds(rounds) {
   const set = new Set(rounds.map(r => r.date.slice(0, 7)));
   return [...set].sort().reverse().map(s => ({ y: +s.slice(0, 4), m: +s.slice(5, 7) }));

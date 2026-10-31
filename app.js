@@ -131,7 +131,7 @@ function route() {
 }
 
 // Torcedor (sem login): só times sorteados, ranking e craque/time ideal. Masters veem tudo.
-const PUBLIC_ROUTES = ['sorteio', 'ranking', 'premios', 'ajustes', 'atleta'];
+const PUBLIC_ROUTES = ['sorteio', 'ranking', 'premios', 'ajustes', 'atleta', 'rodada'];
 const TABS_MASTER = [['inicio', 'Início', 'home'], ['ranking', 'Ranking', 'rank'], ['atletas', 'Atletas', 'cards'], ['sorteio', 'Sorteio', 'shuffle'], ['premios', 'Prêmios', 'trophy'], ['caixa', 'Caixa', 'cash']];
 const TABS_PUBLIC = [['sorteio', 'Times', 'shirt'], ['ranking', 'Ranking', 'rank'], ['premios', 'Craque do mês', 'trophy']];
 const TAB_ICONS = {
@@ -229,9 +229,12 @@ store.subscribe(() => {
 });
 
 // Rodada ao vivo: abre a janela grande uma vez por noite para quem não está contando
+const liveOn = () => store.live && !store.live.finishedAt ? store.live : null;
+const liveDone = () => store.live?.finishedAt && Date.now() - store.live.finishedAt < 12 * 3600 * 1000 ? store.live : null;
 function livePopup() {
-  const l = store.live;
+  const l = liveOn() || liveDone();
   if (!l || L.loadLive() || !sheetRoot.hidden) return;
+  if (l.finishedAt && !store.rounds.some(r => r.date === l.date && !r.summary)) return;
   if (state.liveShownFor === l.id) return;
   state.liveShownFor = l.id;
   openLiveViewer();
@@ -508,9 +511,34 @@ function vRodada(id) {
       <div class="kpi"><b>${es.reduce((s, e) => s + (e.a || 0), 0)}</b><span>Assist.</span></div>
     </div>
     ${r.note ? `<p class="sec muted" style="margin-top:14px">${esc(r.note)}</p>` : ''}
+    ${roundBestHTML(r)}
     <section class="sec">${roundSheet(r)}</section>
     ${store.isMaster ? `<div class="btn-row sec"><a class="btn primary" href="#/lancar/${r.date}">${I.edit}Editar rodada</a><button class="btn danger" data-act="round-del" data-date="${r.date}">Apagar rodada</button></div>
     ${r.updatedBy ? `<p class="hint" style="margin-top:10px">Última edição por ${esc(r.updatedBy)}.</p>` : ''}` : ''}`;
+}
+
+// Melhor time da rodada no campinho + artilheiro, garçom e goleiro menos vazado
+function roundBestHTML(r) {
+  const A = C.roundAwards(store.rounds, store.players, r.date, store.settings);
+  const T = A.totals, line = A.time.line;
+  if (!line.length) return '';
+  const bdg = monthBadges(A);
+  const rows = FORMATION[line.length] || [line.length];
+  let k = 0;
+  const spot = (p, gk) => `<a href="#/atleta/${esc(p.id)}" class="spot ${gk ? 'gk' : ''}"><span class="spot-av">${avatar(p)}${(bdg[p.id] || []).map((x, i) => `<span class="award a${i}" title="${AWARD_LABEL[x]}">${AWARD_SVG[x]}</span>`).join('')}</span><span class="nm">${esc(dn(p))}</span><span class="pt">${gk ? `${T[p.id].gc || 0} ${(T[p.id].gc || 0) === 1 ? 'sofrido' : 'sofridos'}` : `${T[p.id].pts} pts`}</span></a>`;
+  const gk = A.goleiro, tg = gk ? T[gk.id] : null;
+  return `<section class="sec"><div class="sec-head"><h2>Melhor time da rodada</h2><span class="muted small">5 com mais pontos${gk ? ' + goleiro menos vazado' : ''}</span></div>
+    <div class="pitch" role="img" aria-label="Melhor time da rodada">
+      ${rows.map(n => `<div class="line">${line.slice(k, k += n).map(p => spot(p)).join('')}</div>`).join('')}
+      ${gk ? `<div class="line">${spot(gk, true)}</div>` : ''}
+    </div>
+    <p class="legend-awards"><span>${AWARD_SVG.crown}Craque da noite</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span></p>
+    <div class="highlights" style="margin-top:12px">
+      ${hlCard('Craque da noite', I.star, A.mvp ? [A.mvp] : [], A.mvp ? T[A.mvp.id].pts : 0, 'pts', 'mvp')}
+      ${hlCard('Artilheiro da noite', I.ball, A.artilheiro, A.artilheiro.length ? T[A.artilheiro[0].id].g : 0, A.artilheiro.length && T[A.artilheiro[0].id].g === 1 ? 'gol' : 'gols')}
+      ${hlCard('Garçom da noite', I.pass, A.garcom, A.garcom.length ? T[A.garcom[0].id].a : 0, 'assist.')}
+      ${gk && tg.mj ? hlCard('Goleiro menos vazado', I.glove, [gk], tg.gc || 0, `${(tg.gc || 0) === 1 ? 'sofrido' : 'sofridos'} em ${tg.mj} ${tg.mj === 1 ? 'jogo' : 'jogos'}`) : hlCard('Goleiro menos vazado', I.glove, gk ? [gk] : [], gk ? tg.cs : 0, 'sem sofrer')}
+    </div></section>`;
 }
 
 // ================= RANKING =================
@@ -1171,7 +1199,17 @@ function liveViewHTML(l) {
       ${(l.gks || []).length ? `<div><b>🧤 Goleiros</b><small>${l.gks.map(id => esc(dn(playerById(id)))).join(', ')}</small></div>` : ''}</div>`;
 }
 function openLiveViewer() {
-  const l = store.live; if (!l) return;
+  const done = liveDone();
+  if (done && !liveOn()) {
+    const r = store.rounds.find(x => x.date === done.date && !x.summary);
+    openSheet(`<div class="lv-viewer-top"><span class="live paused">RODADA ENCERRADA</span><span class="muted small">${C.fmtDate(done.date, { year: false })}</span></div>
+      <div class="lbl-sm">Classificação final</div>${liveTableHTML(done)}
+      ${r ? roundBestHTML(r) : ''}
+      ${r ? `<a class="btn primary block" style="margin-top:14px" href="#/rodada/${esc(r.id)}" data-act="sheet-close-go">Ver a rodada completa</a>` : ''}`);
+    sheetRoot.querySelector('.sheet')?.classList.add('lv-sheet');
+    return;
+  }
+  const l = liveOn(); if (!l) return;
   openSheet(`<div class="lv-viewer-top"><span class="live"><i></i>RODADA AO VIVO</span><span class="muted small">${C.fmtDate(l.date, { year: false })}</span></div>
     <div id="lvViewer">${liveViewHTML(l)}</div>
     ${store.isMaster ? `<a class="btn primary block" style="margin-top:14px" href="#/partida" data-act="sheet-close-go">Controlar a partida</a>` : ''}`);
@@ -1180,11 +1218,13 @@ function openLiveViewer() {
 function refreshLiveViewer() {
   const box = document.getElementById('lvViewer');
   if (!box) return;
-  if (!store.live) { closeSheet(); return; }
-  box.innerHTML = liveViewHTML(store.live);
+  if (!liveOn()) { closeSheet(); return; }
+  box.innerHTML = liveViewHTML(liveOn());
 }
 function liveBannerHTML() {
-  const l = store.live; if (!l) return '';
+  const d = !liveOn() && liveDone();
+  if (d) return `<button class="live-banner big done" data-act="live-view"><span><b>RODADA ENCERRADA</b><br>Veja o melhor time, o artilheiro, o garçom e o goleiro menos vazado</span><em>Ver ›</em></button>`;
+  const l = liveOn(); if (!l) return '';
   const m = l.match; const sc = m ? L.score(m) : null;
   return `<button class="live-banner big" data-act="live-view"><i></i><span><b>RODADA AO VIVO</b><br>${m ? `${tName(l, m.a)} <b>${sc[0]} × ${sc[1]}</b> ${tName(l, m.b)} · <span class="lvClockView">${L.fmtClock(L.remaining(m))}</span>` : 'Intervalo entre partidas'}</span><em>Acompanhar ›</em></button>`;
 }
@@ -1194,7 +1234,7 @@ function vPartida() {
   if (!store.isMaster) { location.hash = '#/sorteio'; return ''; }
   const l = L.loadLive();
   if (!l) {
-    if (store.live) return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Rodada ao vivo em outro celular</h3><p>${store.live._by ? esc(store.live._by) + ' está' : 'Alguém da comissão está'} contando a partida. Se precisar, você pode assumir a contagem neste celular.</p>
+    if (liveOn()) return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Rodada ao vivo em outro celular</h3><p>${store.live._by ? esc(store.live._by) + ' está' : 'Alguém da comissão está'} contando a partida. Se precisar, você pode assumir a contagem neste celular.</p>
       <button class="btn" data-act="live-view">Acompanhar</button> <button class="btn primary" data-act="live-takeover">Assumir a contagem aqui</button></div>`;
     return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Nenhuma rodada ao vivo</h3><p>No Sorteio, sorteie ou monte os times e toque em "Começar rodada ao vivo".</p><a class="btn primary" href="#/sorteio">Ir para o sorteio</a></div>`;
   }
@@ -1255,7 +1295,7 @@ const GOAL_RULE = '2 gols vence';
 
 function liveTick() {
   // relógios da tela de quem acompanha
-  const lv = store.live;
+  const lv = liveOn();
   if (lv?.match) document.querySelectorAll('.lvClockView').forEach(el => { el.textContent = L.fmtClock(L.remaining(lv.match)); });
   if (lv?.match && document.getElementById('lvViewer')) {
     const sus = L.suspended(lv.match);
@@ -1392,6 +1432,10 @@ async function liveFinish() {
     const round = { date: l.date, entries, note: `Contada ao vivo: ${l.history.length} partidas.`, teams: l.teams.map(t => ({ name: t.name, ids: t.ids })), gks: l.gks || [], matches: l.history.map(h => ({ a: h.a, b: h.b, ga: h.ga, gb: h.gb, gkA: h.gkA || null, gkB: h.gkB || null })) };
     const r = await store.saveRound(round, exists?.id || null);
     L.saveLive(null); keepAwake(false);
+    // avisa a galera que a rodada acabou (mostra o melhor time por 12 horas)
+    state.liveShownFor = l.id;
+    store.saveLive({ id: l.id, date: l.date, finishedAt: Date.now(), teams: l.teams, history: l.history.map(h => ({ a: h.a, b: h.b, ga: h.ga, gb: h.gb, winner: h.winner, n: h.n })), queue: [], gks: l.gks || [] })?.catch?.(() => {});
+    state.liveShownFor = l.id;
     toast(r === 'queued' ? 'Rodada salva. Sincroniza quando a internet voltar.' : 'Rodada lançada');
     location.hash = '#/rodada/' + l.date;
   } catch (e) { toast(e.message, true); }
@@ -1623,7 +1667,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 42.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 43.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2491,7 +2535,7 @@ const actions = {
     const teams = drawTeamsList();
     const gks = drawGks();
     if (teams.length < 2) { toast('Sorteie pelo menos 2 times', true); return; }
-    if (L.loadLive() || store.live) { const ok = await confirmSheet('Já tem uma rodada ao vivo', 'Começar uma nova descarta a que está em andamento.', 'Começar nova'); if (!ok) return; }
+    if (L.loadLive() || liveOn()) { const ok = await confirmSheet('Já tem uma rodada ao vivo', 'Começar uma nova descarta a que está em andamento.', 'Começar nova'); if (!ok) return; }
     if (gks.length < 2) { const ok = await confirmSheet('Faltam goleiros', `Só ${gks.length === 1 ? '1 goleiro marcado' : 'nenhum goleiro marcado'} em "Quem vai jogar". Dá para começar e escolher o goleiro de cada time na partida.`, 'Começar assim', false); if (!ok) return; }
     const n = now();
     L.saveLive(L.newNight(teams, C.isoDate(n.getDay() === 2 ? n : C.lastTuesday(n)), gks));
@@ -2518,7 +2562,7 @@ const actions = {
   },
   'live-next-close': el => { closeSheet(); const l = L.loadLive(); if (!l) return; L.nextMatch(l, +el.dataset.opp); L.saveLive(l); keepAwake(true); render(); window.scrollTo(0, 0); },
   'live-takeover': async () => {
-    const lv = store.live; if (!lv) return;
+    const lv = liveOn(); if (!lv) return;
     const ok = await confirmSheet('Assumir a contagem?', 'A partida passa a ser controlada por este celular. Use só se o outro celular parou de contar.', 'Assumir', false);
     if (!ok) return;
     const { _at, _by, ...l } = lv; L.saveLive(l); keepAwake(true); render();
