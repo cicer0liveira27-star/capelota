@@ -230,7 +230,12 @@ store.subscribe(() => {
 
 // Rodada ao vivo: abre a janela grande uma vez por noite para quem não está contando
 const liveOn = () => store.live && !store.live.finishedAt ? store.live : null;
-const liveDone = () => store.live?.finishedAt && Date.now() - store.live.finishedAt < 12 * 3600 * 1000 ? store.live : null;
+// rodada encerrada: só aparece se a rodada ainda existe (se a comissão apagar, some para todo mundo)
+const liveDone = () => {
+  const l = store.live;
+  if (!l?.finishedAt || Date.now() - l.finishedAt >= 12 * 3600 * 1000) return null;
+  return store.rounds.some(r => r.date === l.date && !r.summary) ? l : null;
+};
 function livePopup() {
   const l = liveOn() || liveDone();
   if (!l || L.loadLive() || !sheetRoot.hidden) return;
@@ -1235,7 +1240,7 @@ function openLiveViewer() {
   const done = liveDone();
   if (done && !liveOn()) {
     const r = store.rounds.find(x => x.date === done.date && !x.summary);
-    openSheet(`<div class="lv-viewer-top"><span class="live paused">RODADA ENCERRADA</span><span class="muted small">${C.fmtDate(done.date, { year: false })}</span></div>
+    openSheet(`<div id="lvDone"></div><div class="lv-viewer-top"><span class="live paused">RODADA ENCERRADA</span><span class="muted small">${C.fmtDate(done.date, { year: false })}</span></div>
       <div class="lbl-sm">Classificação final</div>${liveTableHTML(done)}
       ${r ? roundBestHTML(r) : ''}
       ${r ? `<a class="btn primary block" style="margin-top:14px" href="#/rodada/${esc(r.id)}" data-act="sheet-close-go">Ver a rodada completa</a>` : ''}`);
@@ -1249,6 +1254,7 @@ function openLiveViewer() {
   sheetRoot.querySelector('.sheet')?.classList.add('lv-sheet');
 }
 function refreshLiveViewer() {
+  if (document.getElementById('lvDone') && !liveDone()) { closeSheet(); return; }
   const box = document.getElementById('lvViewer');
   if (!box) return;
   if (!liveOn()) { closeSheet(); return; }
@@ -1702,7 +1708,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 46.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 47.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2870,7 +2876,10 @@ const actions = {
     const rr0 = roundById(date);
     const ok = await confirmSheet(rr0?.summary ? 'Apagar resumo do mês?' : 'Apagar rodada?', `${rr0?.summary ? 'O resumo de ' + C.MONTHS[+rr0.date.slice(5, 7) - 1].toLowerCase() : 'A rodada de ' + C.fmtDate(rr0?.date || date)} e todos os números somem das estatísticas.`, 'Apagar');
     if (!ok) return;
-    try { await store.deleteRound(date); state.editor = null; toast('Apagado'); location.hash = '#/inicio'; } catch (e) { toast(e.message, true); }
+    try {
+      await store.deleteRound(date); state.editor = null;
+      // se era a rodada do aviso "rodada encerrada", tira o aviso do banco também
+      if (store.live?.finishedAt && (store.live.date === date || store.live.date === rr0?.date)) store.saveLive(null)?.catch?.(() => {}); toast('Apagado'); location.hash = '#/inicio'; } catch (e) { toast(e.message, true); }
   }
 };
 
