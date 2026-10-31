@@ -1131,8 +1131,10 @@ function liveEventsHTML(l, m) {
   }).join('');
 }
 function liveTableHTML(l) {
-  const wins = L.teamWins(l), pc = L.playedCount(l);
-  return `<div class="lv-table">${l.teams.map((t, i) => `<span>${tDot(i)}${tName(l, i)} <b>${wins[i]}</b>V <small>${pc[i]}J</small></span>`).join('')}</div>`;
+  const st = L.standings(l);
+  return `<table class="lv-class"><thead><tr><th class="t">Time</th><th title="Jogos">J</th><th title="Pontos">P</th><th title="Vitórias">V</th><th title="Empates">E</th><th title="Derrotas">D</th><th title="Gols feitos">GF</th><th title="Gols sofridos">GS</th><th title="Saldo de gols">SG</th></tr></thead>
+    <tbody>${st.map((t, k) => `<tr class="${k === 0 && t.pts > 0 ? 'lead' : ''}"><td class="t"><span class="pos">${k + 1}</span>${tDot(t.i)}${tName(l, t.i)}</td><td>${t.j}</td><td class="pts">${t.pts}</td><td>${t.v}</td><td>${t.e}</td><td>${t.d}</td><td>${t.gf}</td><td>${t.gs}</td><td class="${t.sg > 0 ? 'pos-sg' : t.sg < 0 ? 'neg-sg' : ''}">${t.sg > 0 ? '+' : ''}${t.sg}</td></tr>`).join('')}</tbody></table>
+    <p class="hint" style="margin-top:6px">Vitória 3 pontos, empate 1. Empate em pontos: vale o saldo de gols, depois gols feitos.</p>`;
 }
 function liveHistHTML(l) {
   return l.history.slice().reverse().map(h => `<div class="ev"><span class="m">${h.n}ª</span>${tDot(h.a)}<b>${h.ga} × ${h.gb}</b>${tDot(h.b)}<span style="color:var(--t2)">${tName(l, h.a)} × ${tName(l, h.b)} · ${h.winner != null ? tName(l, h.winner) + ' venceu' : 'empate'}</span></div>`).join('');
@@ -1376,11 +1378,11 @@ async function liveFinish() {
     return;
   }
   const posOf = pid => playerById(pid)?.pos || 'L';
-  const { entries, wins } = L.nightEntries(l, posOf);
-  const best = Math.max(...wins);
-  const champs = l.teams.filter((_, i) => wins[i] === best && best > 0).map(t => t.name).join(' e ');
+  const { entries } = L.nightEntries(l, posOf);
+  const st = L.standings(l), top = st[0];
+  const champs = top && top.pts > 0 ? st.filter(t => t.pts === top.pts && t.sg === top.sg && t.gf === top.gf).map(t => l.teams[t.i].name).join(' e ') : '';
   const exists = store.rounds.find(r => r.date === l.date && !r.summary);
-  const ok = await confirmSheet('Encerrar a noite e lançar a rodada?', `${l.history.length} partidas. ${champs ? `Campeão: ${esc(champs)} (${best} vitórias). ` : ''}Gols, assistências, cartões, vitórias, empates, derrotas e os números dos goleiros vão para a rodada de ${C.fmtDate(l.date)}.${exists ? ' Já existe uma rodada nessa data: ela será substituída.' : ''}`, 'Lançar rodada', false);
+  const ok = await confirmSheet('Encerrar a noite e lançar a rodada?', `${l.history.length} partidas. ${champs ? `Campeão: ${esc(champs)} (${top.pts} pontos). ` : ''}Gols, assistências, cartões, vitórias, empates, derrotas e os números dos goleiros vão para a rodada de ${C.fmtDate(l.date)}.${exists ? ' Já existe uma rodada nessa data: ela será substituída.' : ''}`, 'Lançar rodada', false);
   if (!ok) return;
   try {
     const round = { date: l.date, entries, note: `Contada ao vivo: ${l.history.length} partidas.`, teams: l.teams.map(t => ({ name: t.name, ids: t.ids })), gks: l.gks || [], matches: l.history.map(h => ({ a: h.a, b: h.b, ga: h.ga, gb: h.gb, gkA: h.gkA || null, gkB: h.gkB || null })) };
@@ -1617,7 +1619,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 39.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 40.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================

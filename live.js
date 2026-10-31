@@ -150,12 +150,24 @@ export function nightEntries(l, posOf) {
       if (e.type === 'b' && e.pid) inc(e.pid, 'b');
     });
   });
-  const best = Math.max(0, ...wins);
-  if (best > 0) wins.forEach((w, ti) => { if (w === best) l.teams[ti].ids.forEach(pid => { if (posOf(pid) !== 'G') inc(pid, 't'); }); });
+  // título: primeiro da classificação (pontos, saldo, gols feitos)
+  const st = standings(l), top = st[0];
+  if (top && top.pts > 0) st.filter(t => t.pts === top.pts && t.sg === top.sg && t.gf === top.gf).forEach(t => l.teams[t.i].ids.forEach(pid => { if (posOf(pid) !== 'G') inc(pid, 't'); }));
   // limpa zeros (menos gols sofridos de goleiro que jogou)
   Object.values(E).forEach(e => Object.keys(e).forEach(k => { if (!e[k] && !(k === 'gc' && e.mj)) delete e[k]; }));
   Object.values(E).forEach(e => { e.p = 1; });
   return { entries: E, wins };
+}
+
+// Classificação da noite: vitória 3, empate 1, derrota 0. Desempate: saldo de gols, depois gols feitos.
+export function standings(l) {
+  const T = l.teams.map((t, i) => ({ i, j: 0, v: 0, e: 0, d: 0, pts: 0, gf: 0, gs: 0, sg: 0 }));
+  l.history.forEach(h => {
+    const add = (ti, gf, gs) => { const t = T[ti]; t.j++; t.gf += gf; t.gs += gs; if (gf > gs) { t.v++; t.pts += 3; } else if (gf === gs) { t.e++; t.pts += 1; } else t.d++; };
+    add(h.a, h.ga, h.gb); add(h.b, h.gb, h.ga);
+  });
+  T.forEach(t => { t.sg = t.gf - t.gs; });
+  return T.sort((x, y) => (y.pts - x.pts) || (y.sg - x.sg) || (y.gf - x.gf) || (x.i - y.i));
 }
 
 export function teamWins(l) {
