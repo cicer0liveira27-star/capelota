@@ -799,7 +799,7 @@ function vCaixa() {
     const ini = tv.first ? `${C.MONTHS[+tv.first.slice(5) - 1].toLowerCase()}/${tv.first.slice(0, 4)}` : '';
     const row = (ico, n, val) => `<div class="st-row"><span class="cx-ico ${ico}">${ico === 'in' ? '＋' : '−'}</span><span class="nm">${esc(n)}</span><span class="line"><b>${K.brl(val)}</b></span></div>`;
     body = `<div class="cx-result ${tv.saldo >= 0 ? 'ok' : 'bad'}"><span>Saldo em caixa</span><b>${K.brl(tv.saldo)}</b>
-        <small>todos os meses, de ${ini} até hoje</small></div>
+        <small>todos os meses desde ${ini}, com pagamentos adiantados</small></div>
       <div class="cx-cards" style="margin-top:10px">
         <div class="cx-card ok"><span>Receitas</span><b>${K.brl(tv.entradas)}</b><small>total</small></div>
         <div class="cx-card bad"><span>Despesas</span><b>${K.brl(tv.saidas)}</b><small>total</small></div>
@@ -810,7 +810,7 @@ function vCaixa() {
       <div class="sec-head" style="margin-top:22px"><h2>Despesas</h2><b class="cx-out">${K.brl(tv.saidas)}</b></div>
       ${tv.expByCat.length ? `<div class="sheet-table">${tv.expByCat.map(c => row('out', c.name, c.amount)).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma despesa.</p></div>`}
       <div class="sec-head" style="margin-top:22px"><h2>Mês a mês</h2></div>
-      <div class="sheet-table">${tv.months.slice().reverse().map(x => `<button class="st-row cx-row" data-act="cx-goto" data-y="${x.y}" data-m="${x.m}"><span class="nm">${C.MONTHS[x.m - 1]} ${x.y}<small>Receitas ${K.brl(x.entradas)} · Despesas ${K.brl(x.saidas)}</small></span><span class="line"><b class="${x.resultado >= 0 ? 'cx-in' : 'cx-out'}">${x.resultado >= 0 ? '+' : ''}${K.brl(x.resultado)}</b></span></button>`).join('')}</div>
+      <div class="sheet-table">${tv.months.slice().reverse().map(x => `<button class="st-row cx-row" data-act="cx-goto" data-y="${x.y}" data-m="${x.m}"><span class="nm">${C.MONTHS[x.m - 1]} ${x.y}<small>${x.future ? `Adiantado: ${K.brl(x.entradas)}${x.saidas ? ' · Despesas ' + K.brl(x.saidas) : ''}` : `Receitas ${K.brl(x.entradas)} · Despesas ${K.brl(x.saidas)}`}</small></span><span class="line"><b class="${x.resultado >= 0 ? 'cx-in' : 'cx-out'}">${x.resultado >= 0 ? '+' : ''}${K.brl(x.resultado)}</b></span></button>`).join('')}</div>
       <p class="hint" style="margin-top:10px">Toque num mês para abrir o caixa dele.</p>`;
   } else {
     const acc = K.saldoAcumulado(store.players, store.rounds, store.finance, s.y, s.m);
@@ -861,9 +861,15 @@ async function openReceipt(id) {
     const r = await store.getReceipt(id);
     if (!r) { toast('Comprovante não encontrado', true); return; }
     if (r.type === 'pdf') {
+      // o celular bloqueia abrir janela depois de carregar; mostra o PDF numa janela com botão para abrir/baixar
       const bin = atob(r.data.split(',')[1]); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
       const url = URL.createObjectURL(new Blob([u8], { type: 'application/pdf' }));
-      window.open(url, '_blank'); setTimeout(() => URL.revokeObjectURL(url), 60000);
+      const nm = (r.name || 'comprovante.pdf').replace(/[^\w.\- ]/g, '_');
+      openSheet(`<h2>Comprovante</h2>
+        <iframe src="${url}" title="Comprovante em PDF" style="width:100%;height:60dvh;border:1px solid var(--risca);border-radius:12px;background:#fff"></iframe>
+        <p class="hint" style="margin-top:8px">${esc(r.name || '')}${r.by ? ' · enviado por ' + esc(r.by) : ''}</p>
+        <div class="btn-row" style="margin-top:10px"><a class="btn primary" href="${url}" target="_blank" rel="noopener">Abrir PDF</a><a class="btn" href="${url}" download="${esc(nm)}">Baixar</a></div>`);
+      setTimeout(() => URL.revokeObjectURL(url), 10 * 60000);
     } else {
       openSheet(`<h2>Comprovante</h2><img src="${r.data}" alt="Comprovante" style="width:100%;border-radius:12px"><p class="hint" style="margin-top:8px">${esc(r.name || '')}${r.by ? ' · enviado por ' + esc(r.by) : ''}</p><button class="btn block" style="margin-top:10px" data-act="sheet-close">Fechar</button>`);
     }
@@ -1429,7 +1435,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 36.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 37.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
