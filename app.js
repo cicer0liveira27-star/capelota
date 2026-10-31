@@ -747,10 +747,12 @@ function vSorteio() {
         <div class="team"><div class="team-h"><span class="dot" style="background:${TEAM_COLORS[i]}"></span><h3><button class="team-rename" data-act="draw-rename" data-i="${i}" title="Mudar o nome do time">${esc(dName(i))} ✎</button></h3>
           <span class="str">${t.length} atletas${store.isMaster ? `, força ${lastSum(t)}` : ''}</span></div>
           <ul>${t.map((id, j) => { const p = playerById(id); return `<li style="animation-delay:${(j * d.result.length + i) * 70}ms">${avatar(p, 's')}<span class="li-nm">${esc(dn(p))}${flag(p)}</span>${p?.pos === 'G' ? '<span class="gk">GOL</span>' : ''}</li>`; }).join('')}</ul>
+          ${t.length ? `<button class="btn sm block team-share" data-act="share-team" data-i="${i}">${I.share}Story deste time</button>` : ''}
         </div>`).join('')}</div>
       ${(d.out || []).length ? `<div class="gk-loose"><span class="lab">🪑 Ficaram de fora (times fechados com ${PER_TEAM})</span>${d.out.map(id => { const p = playerById(id); return p ? `<span class="gk-chip">${avatar(p, 's')}${esc(dn(p))}</span>` : ''; }).join('')}<small>Dá para trocar em "Ajustar times à mão".</small></div>` : ''}
       ${gkSel.length ? `<div class="gk-loose"><span class="lab">🧤 Goleiros soltos</span>${gkSel.map(p => `<span class="gk-chip">${avatar(p, 's')}${esc(dn(p))}</span>`).join('')}<small>Na partida ao vivo você escolhe quem está no gol de cada time.</small></div>` : ''}
-      <button class="btn block" style="margin-top:12px" data-act="draw-manual">✋ Ajustar times à mão</button>
+      <button class="btn block" style="margin-top:12px" data-act="share-team" data-i="all">${I.share}Story de todos os times (uma imagem por time)</button>
+      <button class="btn block" style="margin-top:10px" data-act="draw-manual">✋ Ajustar times à mão</button>
       <div class="btn-row" style="margin-top:10px">
         <button class="btn" data-act="draw-share">${I.whats}Mandar no grupo</button>
         <button class="btn" data-act="draw-go">${I.shuffle}Sortear de novo</button>
@@ -1700,7 +1702,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 45.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 46.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2423,6 +2425,36 @@ async function shareRound(id, fmt) {
   if (files.length) await shareFiles(files);
 }
 
+// Story de um time do sorteio: figurinha de cada jogador espalhada na tela
+async function cardTeamStory(i) {
+  setFormat('story');
+  const ids = state.draw.result[i] || [];
+  const ps = ids.map(playerById).filter(Boolean);
+  const n = now(); const date = C.isoDate(n.getDay() === 2 ? n : C.nextGame(n));
+  const { c, x } = await cardBase(C.fmtDate(date, { year: false }), 'Times da noite');
+  const col = TEAM_COLORS[i % 4];
+  // faixa com o nome do time
+  x.fillStyle = col; rr(x, 60, 300, 960, 150, 30); x.fill();
+  x.fillStyle = (i % 4 === 1 || i % 4 === 2) ? '#0a0f1e' : '#f2ece0';
+  x.font = `900 96px ${FD}`; x.textAlign = 'center'; x.fillText(fit(x, dName(i), 900), 540, 410); x.textAlign = 'left';
+  // posições das figurinhas (até 5 em 2-1-2; mais que isso em grade)
+  const L5 = [[300, 730], [780, 730], [540, 1170], [300, 1610], [780, 1610]];
+  const rots = [-0.05, 0.05, -0.02, 0.04, -0.04];
+  let pos;
+  if (ps.length <= 5) pos = ps.length === 4 ? [L5[0], L5[1], L5[3], L5[4]] : L5.slice(0, ps.length);
+  else { const cols = 3, rows = Math.ceil(ps.length / cols); pos = ps.map((_, k) => [200 + (k % cols) * 340, 700 + Math.floor(k / cols) * (1180 / rows)]); }
+  const big = ps.length <= 5;
+  for (let k = 0; k < ps.length; k++) await drawSticker(x, ps[k], pos[k][0], pos[k][1], big ? 330 : 270, big ? 420 : 344, rots[k % 5]);
+  return canvasFile(c, `capelota-${dName(i).toLowerCase().replace(/\W+/g, '-')}-story.png`);
+}
+async function shareTeams(which) {
+  toast('Montando as imagens…');
+  const list = which === 'all' ? state.draw.result.map((t, i) => t.length ? i : -1).filter(i => i >= 0) : [+which];
+  const files = [];
+  for (const i of list) files.push(await cardTeamStory(i));
+  await shareFiles(files);
+}
+
 async function shareMonth(fmt) {
   const { y, m } = state.awards;
   const A = C.monthAwards(store.rounds, store.players, y, m, store.settings);
@@ -2561,6 +2593,7 @@ const actions = {
     const fmt = await askFormat('Compartilhar figurinha'); if (!fmt) return;
     el.disabled = true; try { await sharePlayer(el.dataset.id, fmt); } finally { el.disabled = false; }
   },
+  'share-team': async el => { el.disabled = true; try { await shareTeams(el.dataset.i); } catch (e) { toast(e.message, true); } finally { el.disabled = false; } },
   'share-round': async el => {
     const fmt = await askFormat('Compartilhar a rodada'); if (!fmt) return;
     el.disabled = true; try { await shareRound(el.dataset.id, fmt); } finally { el.disabled = false; }

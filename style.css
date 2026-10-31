@@ -735,3 +735,4 @@ button.cx-card.in b { color: #3ccf8e; }
 .champ-stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-bottom: 12px; }
 .champ-stats span { background: var(--vest); border: 1px solid var(--risca); border-radius: 12px; padding: 8px 2px; text-align: center; font-size: 11px; color: var(--texto-3); display: flex; flex-direction: column; gap: 2px; }
 .champ-stats b { font-family: var(--fd); font-size: 20px; color: var(--texto); font-weight: 900; }
+.team-share { margin-top: 10px; }
