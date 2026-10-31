@@ -100,10 +100,28 @@ export function endMatch(l) {
 }
 
 // Próximo confronto sugerido: [time A, time B]
-export function nextPair(l) {
-  if (l.stay != null) return [l.stay, l.queue[0]];
-  return [l.queue[0], l.queue[1]];
+// Quem pode entrar na próxima partida.
+//  fixed: time que já está garantido (quem venceu, ou o primeiro de fora no empate)
+//  pool: candidatos para o outro lado (só quem estava de fora; os que acabaram de jogar só voltam se não houver ninguém de fora)
+//  tied: candidatos com o mesmo número de jogos (aí dá para sortear)
+export function nextOptions(l) {
+  const last = l.history[l.history.length - 1];
+  const pc = playedCount(l);
+  const order = (arr) => [...arr].sort((x, y) => pc[x] - pc[y] || l.queue.indexOf(x) - l.queue.indexOf(y));
+  const justOut = !last ? [] : (l.stay != null ? [last.a === l.stay ? last.b : last.a] : [last.a, last.b]);
+  const waiting = l.queue.filter(i => !justOut.includes(i) && i !== l.stay);
+  let fixed, pool;
+  if (l.stay != null) { fixed = l.stay; pool = waiting.length ? waiting : l.queue.filter(i => i !== l.stay); }
+  else if (waiting.length >= 2) { const w = order(waiting); fixed = w[0]; pool = w.slice(1); }
+  else if (waiting.length === 1) { fixed = waiting[0]; pool = order(l.queue.filter(i => i !== fixed)); }
+  else { const q = order(l.queue); fixed = q[0]; pool = q.slice(1); }
+  pool = order(pool);
+  const min = pool.length ? pc[pool[0]] : 0;
+  const tied = pool.filter(i => pc[i] === min);
+  return { fixed, pool, sugg: pool[0], tied, pc };
 }
+
+export function nextPair(l) { const o = nextOptions(l); return [o.fixed, o.sugg]; }
 
 // Próxima partida. opp: adversário escolhido (opcional).
 // Goleiros: quem estava no gol do time que ficou continua com ele; o outro vai para o time que entra.
