@@ -58,6 +58,7 @@ class Store {
     this.rounds = [];
     this.settings = clone(DEFAULT_SETTINGS);
     this.draw = null; // último sorteio publicado pelos masters
+    this.live = null; // rodada ao vivo publicada (todo mundo acompanha)
     this.finance = {}; // caixa por mês: { 'AAAA-MM': {...} } (só masters)
     this.masters = []; // comissão: [{ id, playerId, name, cpfEnd, h? }] (só masters enxergam)
     this.user = null; // { name, uid? }
@@ -180,6 +181,11 @@ class Store {
       if (snap.size) this.usingSeed = false;
       this.loaded.rounds = true; this._emit(); seedIfEmpty();
     }, err => { console.error(err); this.loaded.rounds = true; this._emit(); });
+    fsM.onSnapshot(fsM.doc(db, 'settings', 'live'), snap => {
+      const d = snap.exists() ? snap.data() : null;
+      try { this.live = d?.json ? { ...JSON.parse(d.json), _at: d.at, _by: d.by } : null; } catch (e) { this.live = null; }
+      this._emit();
+    }, err => console.error(err));
     fsM.onSnapshot(fsM.doc(db, 'settings', 'draw'), snap => {
       this.draw = snap.exists() ? snap.data() : null; this._emit();
     }, err => console.error(err));
@@ -424,6 +430,14 @@ class Store {
     if (!id) return;
     if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.deleteDoc(fsM.doc(db, 'receipts', id))); }
     const all = JSON.parse(localStorage.getItem('capelota:receipts') || '{}'); delete all[id]; localStorage.setItem('capelota:receipts', JSON.stringify(all));
+  }
+
+  // ---------- rodada ao vivo (publicada para todo mundo acompanhar) ----------
+  async saveLive(l) {
+    if (!this.isMaster) return;
+    const data = { json: l ? JSON.stringify(l) : null, at: Date.now(), by: this.user?.name || '' };
+    if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'settings', 'live'), data)); }
+    this.live = l ? { ...l, _at: data.at, _by: data.by } : null; this._emit(); return 'ok';
   }
 
   // ---------- sorteio publicado ----------

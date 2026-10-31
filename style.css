@@ -243,8 +243,8 @@ p { margin: 0; }
 .mini-cols b { display: block; font-family: var(--fd); font-size: 20px; font-weight: 800; line-height: 1; }
 .mini-cols em { font-style: normal; font-size: 11px; color: var(--texto-3); }
 
-.card-y, .card-r { display: inline-block; width: 9px; height: 13px; border-radius: 2px; vertical-align: -1px; margin-right: 2px; }
-.card-y { background: var(--amarelo); } .card-r { background: var(--vermelho); }
+.card-y, .card-r, .card-b { display: inline-block; width: 9px; height: 13px; border-radius: 2px; vertical-align: -1px; margin-right: 2px; }
+.card-y { background: var(--amarelo); } .card-r { background: var(--vermelho); } .card-b { background: #2f7de1; }
 
 /* ---------- lista de rodadas ---------- */
 .rounds { display: flex; flex-direction: column; gap: 8px; }
@@ -611,7 +611,7 @@ details.panel summary::-webkit-details-marker { color: var(--texto-3); }
 .lv-act { min-height: 96px; border-radius: 18px; border: 1px solid var(--risca); background: var(--vest); font-weight: 700; font-size: 16px; line-height: 1.5; color: var(--texto); }
 .lv-act.g { color: #fff; border: 0; font-size: 17px; }
 .lv-act:active { transform: scale(.97); }
-.lv-act .card-y, .lv-act .card-r { display: inline-block; }
+.lv-act .card-y, .lv-act .card-r, .lv-act .card-b { display: inline-block; }
 .lbl-sm { font-size: 13.5px; font-weight: 700; color: var(--texto-2); margin: 16px 2px 8px; }
 .ev { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 12px; background: var(--vest); border: 1px solid var(--risca); margin-bottom: 6px; font-size: 14.5px; flex-wrap: wrap; }
 .ev .m { font-family: var(--fd); font-weight: 800; font-size: 18px; color: var(--texto-2); min-width: 28px; }
@@ -678,3 +678,30 @@ button.cx-card.in b { color: #3ccf8e; }
 .qty .btn { min-width: 40px; padding: 0; }
 .cx-total-line { margin: -4px 0 14px; color: var(--texto-2); }
 .cx-total-line b { color: var(--texto); font-size: 18px; }
+
+/* rodada ao vivo: goleiros, azul, banner e janela de quem acompanha */
+.lv-acts.three { grid-template-columns: repeat(3, 1fr); margin-top: 0; }
+.lv-acts.three .lv-act { min-height: 74px; font-size: 14px; }
+.gk-btn { margin-top: 6px; border: 1px dashed var(--risca); background: var(--vest); color: var(--texto); border-radius: 10px; padding: 5px 8px; font-size: 12.5px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-score .tm .gk { margin-top: 6px; font-size: 12.5px; color: var(--texto-2); }
+.lv-susp { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
+.lv-susp > span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; background: var(--vest); border: 1px solid var(--risca); font-size: 13.5px; }
+.lv-susp > span.b { border-color: #2f7de1; } .lv-susp > span.r { border-color: var(--vermelho); }
+.lv-susp b { font-variant-numeric: tabular-nums; }
+.lv-table small { color: var(--texto-3); margin-left: 2px; }
+.live-banner.big { width: 100%; text-align: left; cursor: pointer; color: var(--texto); font: inherit; padding: 14px 16px; }
+.live-banner.big span { flex: 1; line-height: 1.35; }
+.live-banner.big em { font-style: normal; font-weight: 700; color: var(--sombrero-claro); white-space: nowrap; }
+.lv-sheet { max-height: 96dvh; }
+.lv-viewer-top { display: flex; justify-content: space-between; align-items: center; margin: 4px 50px 10px 0; }
+.lv-viewer-top .live { font-weight: 800; letter-spacing: .04em; }
+.lv-rosters { display: grid; gap: 8px; }
+.lv-rosters > div { background: var(--vest); border: 1px solid var(--risca); border-radius: 12px; padding: 10px 12px; }
+.lv-rosters b { display: flex; align-items: center; gap: 8px; }
+.lv-rosters small { color: var(--texto-2); display: block; margin-top: 4px; line-height: 1.4; }
+.gk-loose { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 12px; border: 1px dashed var(--risca); border-radius: 14px; }
+.gk-loose .lab { font-weight: 700; width: 100%; }
+.gk-loose small { width: 100%; color: var(--texto-3); }
+.gk-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--vest); border: 1px solid var(--risca); font-size: 14px; }
+.team-rename { border: 0; background: transparent; color: inherit; font: inherit; padding: 0; cursor: pointer; text-align: left; }
+.raffle-win { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 22px; border-radius: 16px; background: var(--vest); border: 1px solid var(--faixa); font-family: var(--fd); font-size: 30px; animation: up .35s cubic-bezier(.2,.9,.3,1) both; }

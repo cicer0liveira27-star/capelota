@@ -3,10 +3,11 @@
 export const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 export const MONTHS_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
-export const FIELDS = ['p', 'g', 'a', 'w', 'd', 'l', 't', 'y', 'r', 'cs'];
+// b = cartão azul, gc = gols sofridos (goleiro), mj = partidas jogadas no gol
+export const FIELDS = ['p', 'g', 'a', 'w', 'd', 'l', 't', 'y', 'r', 'cs', 'b', 'gc', 'mj'];
 
 export function zero() {
-  return { p: 0, g: 0, a: 0, w: 0, d: 0, l: 0, t: 0, y: 0, r: 0, cs: 0, art: 0, gar: 0, pts: 0 };
+  return { p: 0, g: 0, a: 0, w: 0, d: 0, l: 0, t: 0, y: 0, r: 0, cs: 0, b: 0, gc: 0, mj: 0, art: 0, gar: 0, pts: 0 };
 }
 
 export function parseDate(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
@@ -135,12 +136,27 @@ function topGroup(list, T, key) {
   return list.filter(p => T[p.id][key] === max);
 }
 
+// Melhor goleiro: quem levou menos gols (com partidas contadas ao vivo).
+// Só entra quem jogou pelo menos metade das partidas do goleiro que mais jogou; desempate: mais jogos sem sofrer gol.
+// Sem dados de gols sofridos (meses antigos), vale quem tem mais jogos sem sofrer gol.
+export function rankGoalkeepers(gks, T) {
+  const maxMj = Math.max(0, ...gks.map(p => T[p.id].mj || 0));
+  if (maxMj > 0) {
+    const min = Math.ceil(maxMj / 2);
+    const ok = gks.filter(p => (T[p.id].mj || 0) >= min);
+    const rest = gks.filter(p => (T[p.id].mj || 0) < min);
+    const cmp = (a, b) => (T[a.id].gc - T[b.id].gc) || (T[b.id].cs - T[a.id].cs) || (T[b.id].mj - T[a.id].mj);
+    return [...ok.sort(cmp), ...rest.sort(cmp)];
+  }
+  return gks.sort((a, b) => (T[b.id].cs - T[a.id].cs) || byPts(T)(a, b));
+}
+
 // Prêmios do mês: artilheiro, garçom, MVP, paredão (goleiro) e time ideal.
 export function monthAwards(rounds, players, y, m, settings) {
   const { totals: T, rounds: rs, nRounds } = aggregate(rounds, players, { type: 'month', y, m }, settings);
   const played = players.filter(p => T[p.id] && T[p.id].p > 0);
   const line = played.filter(p => p.pos !== 'G').sort(byPts(T));
-  const gks = played.filter(p => p.pos === 'G').sort((a, b) => (T[b.id].cs - T[a.id].cs) || byPts(T)(a, b));
+  const gks = rankGoalkeepers(played.filter(p => p.pos === 'G'), T);
   const all = [...played].sort(byPts(T));
   return {
     y, m, rounds: rs, nRounds, totals: T,
@@ -180,10 +196,9 @@ function shuffle(arr) {
 
 // players: [{id, pos, level}], nTeams; mode: 'equilibrado' | 'aleatorio'
 export function drawTeams(players, nTeams, mode = 'equilibrado') {
+  // goleiros ficam soltos: entram no gol de quem estiver jogando, partida a partida
   const teams = Array.from({ length: nTeams }, () => []);
-  const gks = shuffle(players.filter(p => p.pos === 'G'));
   const line = players.filter(p => p.pos !== 'G');
-  gks.forEach((p, i) => teams[i % nTeams].push(p));
 
   if (mode === 'aleatorio') {
     const sh = shuffle(line);
