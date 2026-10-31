@@ -517,29 +517,40 @@ function vRodada(id) {
     ${r.updatedBy ? `<p class="hint" style="margin-top:10px">Última edição por ${esc(r.updatedBy)}.</p>` : ''}` : ''}`;
 }
 
-// Melhor time da rodada no campinho + artilheiro, garçom e goleiro menos vazado
+// Campinho em HTML (reaproveitado)
+function pitchHTML(line, gk, bdg, sub, label) {
+  const rows = FORMATION[line.length] || [line.length];
+  let k = 0;
+  const spot = (p, isGk) => `<a href="#/atleta/${esc(p.id)}" class="spot ${isGk ? 'gk' : ''}"><span class="spot-av">${avatar(p)}${(bdg[p.id] || []).map((x, i) => `<span class="award a${i}" title="${AWARD_LABEL[x]}">${AWARD_SVG[x]}</span>`).join('')}</span><span class="nm">${esc(dn(p))}</span><span class="pt">${esc(sub(p))}</span></a>`;
+  return `<div class="pitch" role="img" aria-label="${esc(label)}">
+    ${rows.map(n => `<div class="line">${line.slice(k, k += n).map(p => spot(p)).join('')}</div>`).join('')}
+    ${gk ? `<div class="line">${spot(gk, true)}</div>` : ''}</div>`;
+}
+
+// Fim da rodada: time campeão + time ideal no campinho, com artilheiro, garçom e goleiro menos vazado
 function roundBestHTML(r) {
   const A = C.roundAwards(store.rounds, store.players, r.date, store.settings);
   const T = A.totals, line = A.time.line;
   if (!line.length) return '';
-  const bdg = monthBadges(A);
-  if (A.goleiro) (bdg[A.goleiro.id] = bdg[A.goleiro.id] || []).push('wall');
-  const rows = FORMATION[line.length] || [line.length];
-  let k = 0;
-  const spot = (p, gk) => `<a href="#/atleta/${esc(p.id)}" class="spot ${gk ? 'gk' : ''}"><span class="spot-av">${avatar(p)}${(bdg[p.id] || []).map((x, i) => `<span class="award a${i}" title="${AWARD_LABEL[x]}">${AWARD_SVG[x]}</span>`).join('')}</span><span class="nm">${esc(dn(p))}</span><span class="pt">${gk ? `${T[p.id].gc || 0} ${(T[p.id].gc || 0) === 1 ? 'sofrido' : 'sofridos'}` : `${T[p.id].pts} pts`}</span></a>`;
+  const bdg = roundBadges(A);
+  const ch = roundChampion(r);
   const gk = A.goleiro, tg = gk ? T[gk.id] : null;
-  return `<section class="sec"><div class="sec-head"><h2>Melhor time da rodada</h2><span class="muted small">5 com mais pontos${gk ? ' + goleiro menos vazado' : ''}</span></div>
-    <div class="pitch" role="img" aria-label="Melhor time da rodada">
-      ${rows.map(n => `<div class="line">${line.slice(k, k += n).map(p => spot(p)).join('')}</div>`).join('')}
-      ${gk ? `<div class="line">${spot(gk, true)}</div>` : ''}
-    </div>
-    <p class="legend-awards"><span>${AWARD_SVG.crown}Craque da noite</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span><span>${AWARD_SVG.wall}Menos vazado</span></p>
+  const legend = `<p class="legend-awards"><span>${AWARD_SVG.crown}Craque da noite</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span><span>${AWARD_SVG.wall}Menos vazado</span></p>`;
+  const champ = ch && ch.line.length ? `<section class="sec"><div class="sec-head"><h2>🏆 Campeão: ${esc(ch.name)}</h2></div>
+    ${ch.st ? `<div class="champ-stats"><span><b>${ch.st.pts}</b>pontos</span><span><b>${ch.st.j}</b>jogos</span><span><b>${ch.st.v}-${ch.st.e}-${ch.st.d}</b>V-E-D</span><span><b>${ch.st.gf}</b>GF</span><span><b>${ch.st.gs}</b>GS</span><span><b>${ch.st.sg > 0 ? '+' : ''}${ch.st.sg}</b>SG</span></div>` : ''}
+    ${pitchHTML(ch.line, ch.gk, bdg, p => nightLine(T, p), 'Time campeão da noite')}${legend}</section>` : '';
+  return `${champ}
+    <section class="sec"><div class="sec-head"><h2>Time ideal da rodada</h2><span class="muted small">5 com mais pontos${gk ? ' + goleiro menos vazado' : ''}</span></div>
+    ${pitchHTML(line, gk, bdg, p => p.pos === 'G' ? nightLine(T, p) : `${T[p.id].pts} pts`, 'Time ideal da rodada')}
+    ${legend}
     <div class="highlights" style="margin-top:12px">
       ${hlCard('Craque da noite', I.star, A.mvp ? [A.mvp] : [], A.mvp ? T[A.mvp.id].pts : 0, 'pts', 'mvp')}
       ${hlCard('Artilheiro da noite', I.ball, A.artilheiro, A.artilheiro.length ? T[A.artilheiro[0].id].g : 0, A.artilheiro.length && T[A.artilheiro[0].id].g === 1 ? 'gol' : 'gols')}
       ${hlCard('Garçom da noite', I.pass, A.garcom, A.garcom.length ? T[A.garcom[0].id].a : 0, 'assist.')}
       ${gk && tg.mj ? hlCard('Goleiro menos vazado', I.glove, [gk], tg.gc || 0, `${(tg.gc || 0) === 1 ? 'sofrido' : 'sofridos'} em ${tg.mj} ${tg.mj === 1 ? 'jogo' : 'jogos'}`) : hlCard('Goleiro menos vazado', I.glove, gk ? [gk] : [], gk ? tg.cs : 0, 'sem sofrer')}
-    </div></section>`;
+    </div>
+    ${store.isMaster ? `<div class="btn-row sec"><button class="btn primary" data-act="share-round" data-id="${esc(r.id)}">${I.share}Compartilhar no Instagram</button></div>
+    <p class="hint" style="margin-top:8px">Gera duas imagens, no feed ou no story: o time campeão e o time ideal da rodada.</p>` : ''}</section>`;
 }
 
 // ================= RANKING =================
@@ -1689,7 +1700,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 44.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 45.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2288,6 +2299,130 @@ async function cardDestaques(A) {
   return canvasFile(c, `capelota-destaques-${y}-${String(m).padStart(2, '0')}-${FEED ? 'feed' : 'story'}.png`);
 }
 
+
+// ---------- rodada: time campeão e time ideal ----------
+// Campeão da noite: 1º da classificação (partidas contadas ao vivo); sem partidas, quem ganhou título na rodada
+function roundChampion(r) {
+  if (r.teams?.length && r.matches?.length) {
+    const st = L.standings({ teams: r.teams, history: r.matches });
+    const top = st[0]; if (!top || top.pts <= 0) return null;
+    const ti = top.i, t = r.teams[ti];
+    const cnt = {};
+    r.matches.forEach(m => { if (m.a === ti && m.gkA) cnt[m.gkA] = (cnt[m.gkA] || 0) + 1; if (m.b === ti && m.gkB) cnt[m.gkB] = (cnt[m.gkB] || 0) + 1; });
+    const gkId = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0];
+    const line = t.ids.map(playerById).filter(p => p && p.pos !== 'G');
+    const gkInTeam = t.ids.map(playerById).find(p => p && p.pos === 'G');
+    return { name: t.name, color: ti, line, gk: gkId ? playerById(gkId) : gkInTeam || null, st: top };
+  }
+  const ids = Object.entries(r.entries || {}).filter(([, e]) => e.p && e.t).map(([id]) => playerById(id)).filter(Boolean);
+  if (!ids.length) return null;
+  return { name: 'Campeões', color: 0, line: ids.filter(p => p.pos !== 'G'), gk: ids.find(p => p.pos === 'G') || null, st: null };
+}
+function roundBadges(A) {
+  const b = monthBadges(A);
+  if (A.goleiro) (b[A.goleiro.id] = b[A.goleiro.id] || []).push('wall');
+  return b;
+}
+const nightLine = (T, p) => { const t = T[p.id] || C.zero(); return p.pos === 'G' ? `${t.gc || 0} ${(t.gc || 0) === 1 ? 'sofrido' : 'sofridos'}` : [t.g ? `${t.g} ${t.g === 1 ? 'gol' : 'gols'}` : '', t.a ? `${t.a} assist.` : ''].filter(Boolean).join(' · ') || `${t.pts} pts`; };
+
+// Campinho em imagem (feed ou story), reaproveitado pelos cards da rodada
+async function drawPitchCanvas(x, line, gk, badges, sub, opts = {}) {
+  const fx = 50, fy = opts.fy ?? (FEED ? 220 : 300), fw = 980, fh = opts.fh ?? (FEED ? 860 : 1220);
+  x.save(); rr(x, fx, fy, fw, fh, 36); x.clip();
+  for (let i = 0; i < 12; i++) { x.fillStyle = i % 2 ? '#12303a' : '#0f2a33'; x.fillRect(fx, fy + i * fh / 12, fw, fh / 12 + 1); }
+  x.strokeStyle = 'rgba(242,236,224,.2)'; x.lineWidth = 4;
+  rr(x, fx + 24, fy + 24, fw - 48, fh - 48, 10); x.stroke();
+  x.beginPath(); x.arc(fx + fw / 2, fy + 24, FEED ? 95 : 120, 0, Math.PI); x.stroke();
+  const ah = FEED ? 120 : 170, gh = FEED ? 50 : 70;
+  x.strokeRect(fx + fw / 2 - 210, fy + fh - 24 - ah, 420, ah);
+  x.strokeRect(fx + fw / 2 - 100, fy + fh - 24 - gh, 200, gh);
+  x.restore();
+  const rows = FORMATION[line.length] || [line.length];
+  const nRows = rows.length + (gk ? 1 : 0);
+  const top = fy + (FEED ? 105 : 150), bottom = fy + fh - (FEED ? 140 : 170), step = nRows > 1 ? (bottom - top) / (nRows - 1) : 0;
+  const R = FEED ? (nRows > 3 ? 54 : 64) : (line.length > 6 ? 78 : 90);
+  const k0 = FEED ? 0.8 : 1;
+  const spots = []; let k = 0;
+  rows.forEach((n, ri) => { const ps = line.slice(k, k += n); ps.forEach((p, i) => spots.push({ p, cx: fx + fw * (i + 1) / (n + 1), cy: top + ri * step })); });
+  if (gk) spots.push({ p: gk, cx: fx + fw / 2, cy: top + rows.length * step, gk: true });
+  for (const s of spots) {
+    await drawAvatar(x, s.p, s.cx, s.cy, R, s.gk ? '#3c8ea6' : '#f2ece0');
+    const bs = badges[s.p.id] || [];
+    for (let i = 0; i < bs.length; i++) {
+      const ang = -Math.PI / 4 - i * 0.75;
+      await drawBadge(x, bs[i], s.cx + Math.cos(ang) * (R + 8), s.cy + Math.sin(ang) * (R + 8), Math.round(40 * k0));
+    }
+    x.font = `800 ${Math.round(36 * k0)}px ${FD}`; x.textAlign = 'center';
+    const nm = fit(x, dn(s.p), 230), tw = x.measureText(nm).width;
+    const lh = Math.round(50 * k0);
+    x.fillStyle = 'rgba(10,15,30,.86)'; rr(x, s.cx - tw / 2 - 14, s.cy + R + 14, tw + 28, lh, 12); x.fill();
+    x.fillStyle = '#f2ece0'; x.fillText(nm, s.cx, s.cy + R + 14 + lh * 0.76);
+    x.fillStyle = '#c9cfdc'; x.font = `600 ${Math.round(26 * k0)}px ${FB}`; x.fillText(sub(s.p), s.cx, s.cy + R + 14 + lh + 30 * k0);
+    x.textAlign = 'left';
+  }
+  return fy + fh;
+}
+async function drawLegend(x, leg, y0) {
+  if (FEED) {
+    const cols = leg.length, cw = 960 / cols;
+    for (let i = 0; i < cols; i++) {
+      const [kind, who, lab] = leg[i], lx = 60 + i * cw;
+      await drawBadge(x, kind, lx + 26, y0 + 26, 26);
+      x.fillStyle = '#a7b0c5'; x.font = `600 21px ${FB}`; x.fillText(lab, lx + 60, y0 + 16);
+      x.fillStyle = '#f2ece0'; x.font = `700 24px ${FB}`; x.fillText(fit(x, who, cw - 66), lx + 60, y0 + 46);
+    }
+  } else {
+    let ly = y0;
+    for (const [kind, who, lab] of leg) {
+      await drawBadge(x, kind, 98, ly + 30, 32);
+      x.fillStyle = '#a7b0c5'; x.font = `600 26px ${FB}`; x.fillText(lab, 150, ly + 18);
+      x.fillStyle = '#f2ece0'; x.font = `700 32px ${FB}`; x.fillText(fit(x, who, 860), 150, ly + 54);
+      ly += 72;
+    }
+  }
+}
+function roundLegend(A) {
+  const T = A.totals, names = l => l.map(dn).join(', ');
+  return [
+    ['crown', A.mvp ? `${dn(A.mvp)} (${T[A.mvp.id].pts} pts)` : '–', 'Craque da noite'],
+    ['boot', A.artilheiro.length ? `${names(A.artilheiro)} (${T[A.artilheiro[0].id].g})` : '–', 'Artilheiro'],
+    ['hat', A.garcom.length ? `${names(A.garcom)} (${T[A.garcom[0].id].a})` : '–', 'Garçom'],
+    ['wall', A.goleiro ? `${dn(A.goleiro)} (${T[A.goleiro.id].gc || 0} sofr.)` : '–', 'Menos vazado']
+  ];
+}
+async function cardRoundChampion(r, A, ch) {
+  const { c, x } = await cardBase(C.fmtDate(r.date, { year: false }), 'Time campeão da noite');
+  // nome do time e campanha
+  const ty = FEED ? 250 : 330;
+  x.fillStyle = TEAM_COLORS[ch.color % 4]; x.beginPath(); x.arc(78, ty - 20, 16, 0, Math.PI * 2); x.fill();
+  x.fillStyle = '#f2ece0'; x.font = `900 ${FEED ? 64 : 80}px ${FD}`; x.fillText(fit(x, '🏆 ' + ch.name, 900), 108, ty);
+  if (ch.st) {
+    const s = ch.st, sg = (s.sg > 0 ? '+' : '') + s.sg;
+    statTiles(x, [[s.pts, 'Pontos'], [s.j, 'Jogos'], [`${s.v}-${s.e}-${s.d}`, 'V-E-D'], [s.gf, 'Gols feitos'], [s.gs, 'Gols sofridos'], [sg, 'Saldo']], ty + 24, FEED ? 120 : 150);
+  }
+  const fy = ch.st ? (FEED ? 410 : 540) : (FEED ? 280 : 370);
+  const end = await drawPitchCanvas(x, ch.line, ch.gk, roundBadges(A), p => nightLine(A.totals, p), { fy, fh: FEED ? 1110 - fy : 1490 - fy });
+  await drawLegend(x, roundLegend(A), end + (FEED ? 30 : 36));
+  return canvasFile(c, `capelota-campeao-${r.date}-${FEED ? 'feed' : 'story'}.png`);
+}
+async function cardRoundIdeal(r, A) {
+  const { c, x } = await cardBase(C.fmtDate(r.date, { year: false }), 'Time ideal da rodada');
+  const end = await drawPitchCanvas(x, A.time.line, A.time.gk, roundBadges(A), p => p.pos === 'G' ? nightLine(A.totals, p) : `${A.totals[p.id].pts} pts`, { fy: FEED ? 220 : 300, fh: FEED ? 890 : 1190 });
+  await drawLegend(x, roundLegend(A), end + (FEED ? 30 : 36));
+  return canvasFile(c, `capelota-time-ideal-${r.date}-${FEED ? 'feed' : 'story'}.png`);
+}
+async function shareRound(id, fmt) {
+  const r = roundById(id); if (!r) return;
+  const A = C.roundAwards(store.rounds, store.players, r.date, store.settings);
+  setFormat(fmt);
+  toast('Montando as imagens…');
+  const ch = roundChampion(r);
+  const files = [];
+  if (ch && ch.line.length) files.push(await cardRoundChampion(r, A, ch));
+  if (A.time.line.length) files.push(await cardRoundIdeal(r, A));
+  if (files.length) await shareFiles(files);
+}
+
 async function shareMonth(fmt) {
   const { y, m } = state.awards;
   const A = C.monthAwards(store.rounds, store.players, y, m, store.settings);
@@ -2425,6 +2560,10 @@ const actions = {
   'share-player': async el => {
     const fmt = await askFormat('Compartilhar figurinha'); if (!fmt) return;
     el.disabled = true; try { await sharePlayer(el.dataset.id, fmt); } finally { el.disabled = false; }
+  },
+  'share-round': async el => {
+    const fmt = await askFormat('Compartilhar a rodada'); if (!fmt) return;
+    el.disabled = true; try { await shareRound(el.dataset.id, fmt); } finally { el.disabled = false; }
   },
   'share-month': async el => {
     const fmt = await askFormat('Compartilhar prêmios do mês'); if (!fmt) return;
