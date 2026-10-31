@@ -523,6 +523,7 @@ function roundBestHTML(r) {
   const T = A.totals, line = A.time.line;
   if (!line.length) return '';
   const bdg = monthBadges(A);
+  if (A.goleiro) (bdg[A.goleiro.id] = bdg[A.goleiro.id] || []).push('wall');
   const rows = FORMATION[line.length] || [line.length];
   let k = 0;
   const spot = (p, gk) => `<a href="#/atleta/${esc(p.id)}" class="spot ${gk ? 'gk' : ''}"><span class="spot-av">${avatar(p)}${(bdg[p.id] || []).map((x, i) => `<span class="award a${i}" title="${AWARD_LABEL[x]}">${AWARD_SVG[x]}</span>`).join('')}</span><span class="nm">${esc(dn(p))}</span><span class="pt">${gk ? `${T[p.id].gc || 0} ${(T[p.id].gc || 0) === 1 ? 'sofrido' : 'sofridos'}` : `${T[p.id].pts} pts`}</span></a>`;
@@ -532,7 +533,7 @@ function roundBestHTML(r) {
       ${rows.map(n => `<div class="line">${line.slice(k, k += n).map(p => spot(p)).join('')}</div>`).join('')}
       ${gk ? `<div class="line">${spot(gk, true)}</div>` : ''}
     </div>
-    <p class="legend-awards"><span>${AWARD_SVG.crown}Craque da noite</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span></p>
+    <p class="legend-awards"><span>${AWARD_SVG.crown}Craque da noite</span><span>${AWARD_SVG.boot}Artilheiro</span><span>${AWARD_SVG.hat}Garçom</span><span>${AWARD_SVG.wall}Menos vazado</span></p>
     <div class="highlights" style="margin-top:12px">
       ${hlCard('Craque da noite', I.star, A.mvp ? [A.mvp] : [], A.mvp ? T[A.mvp.id].pts : 0, 'pts', 'mvp')}
       ${hlCard('Artilheiro da noite', I.ball, A.artilheiro, A.artilheiro.length ? T[A.artilheiro[0].id].g : 0, A.artilheiro.length && T[A.artilheiro[0].id].g === 1 ? 'gol' : 'gols')}
@@ -1170,6 +1171,24 @@ function liveHistHTML(l) {
   return l.history.slice().reverse().map(h => `<div class="ev"><span class="m">${h.n}ª</span>${tDot(h.a)}<b>${h.ga} × ${h.gb}</b>${tDot(h.b)}<span style="color:var(--t2)">${tName(l, h.a)} × ${tName(l, h.b)} · ${h.winner != null ? tName(l, h.winner) + ' venceu' : 'empate'}</span></div>`).join('');
 }
 
+// Destaques ao vivo: chuteira no artilheiro, cartola no garçom, parede com luva no goleiro menos vazado
+function liveLeadersHTML(l) {
+  const ld = L.liveLeaders(l);
+  const card = (k, label, ids, val) => {
+    const ps = ids.map(playerById).filter(Boolean);
+    return `<div class="lv-lead ${ps.length ? '' : 'empty'}"><div class="lv-lead-k">${label}</div>
+      <div class="lv-lead-av">${ps.slice(0, 3).map(p => `<a class="spot-av" href="#/atleta/${esc(p.id)}" data-act="sheet-close-go">${avatar(p)}<span class="award a0" title="${AWARD_LABEL[k]}">${AWARD_SVG[k]}</span></a>`).join('') || '<span class="muted small">Ninguém ainda</span>'}</div>
+      <div class="lv-lead-n">${ps.length ? (ps.length > 2 ? `${esc(dn(ps[0]))} e mais ${ps.length - 1}` : ps.map(p => esc(dn(p))).join(' e ')) : ''}</div>
+      <div class="lv-lead-v">${val}</div></div>`;
+  };
+  return `<div class="lbl-sm" style="margin-top:14px">Destaques da noite <span class="live" style="margin-left:6px;font-size:10px;padding:2px 8px"><i></i>ao vivo</span></div>
+    <div class="lv-leads">
+      ${card('boot', 'Artilheiro', ld.art.ids, ld.art.v ? `${ld.art.v} ${ld.art.v === 1 ? 'gol' : 'gols'}` : '')}
+      ${card('hat', 'Garçom', ld.gar.ids, ld.gar.v ? `${ld.gar.v} ${ld.gar.v === 1 ? 'assist.' : 'assists.'}` : '')}
+      ${card('wall', 'Menos vazado', ld.gk.ids, ld.gk.ids.length ? `${ld.gk.gc} ${ld.gk.gc === 1 ? 'sofrido' : 'sofridos'} · ${ld.gk.mj} ${ld.gk.mj === 1 ? 'jogo' : 'jogos'}` : '')}
+    </div>`;
+}
+
 // Tela de quem acompanha (todos os usuários)
 function liveViewHTML(l) {
   const m = l.match;
@@ -1192,6 +1211,7 @@ function liveViewHTML(l) {
       <p class="muted" style="text-align:center;margin:10px 0">${last ? `Última: ${tName(l, last.a)} ${last.ga} × ${last.gb} ${tName(l, last.b)}.` : ''} Próxima: <b>${tName(l, a)}</b> × <b>${tName(l, b)}</b></p>`;
   }
   return `${top}
+    ${liveLeadersHTML(l)}
     <div class="lbl-sm" style="margin-top:14px">Classificação da noite</div>${liveTableHTML(l)}
     ${l.history.length ? `<div class="lbl-sm" style="margin-top:12px">Partidas</div>${liveHistHTML(l)}` : ''}
     <div class="lbl-sm" style="margin-top:12px">Times</div>
@@ -1258,6 +1278,7 @@ function vPartida() {
       <div class="lbl-sm">${l.stay != null ? `Adversário de ${tName(l, fixed)}` : `Entra com ${tName(l, fixed)}`}</div>
       <div class="lv-next">${pool.map(ti => `<button class="lv-team ${ti === b ? 'on' : ''}" data-act="live-next" data-opp="${ti}">${tDot(ti)}<b>${tName(l, ti)}</b><span>${pc[ti]} ${pc[ti] === 1 ? 'partida' : 'partidas'}${ti === b ? ' · próximo' : ''}</span><small>${l.teams[ti].ids.map(id => esc(dn(playerById(id)))).join(', ')}</small></button>`).join('')}</div>
       <button class="btn primary block" style="margin-top:12px;min-height:56px;font-size:17px" data-act="live-next" data-opp="${b}">▶ ${tName(l, fixed)} × ${tName(l, b)}</button>`}
+      ${liveLeadersHTML(l)}
       <section class="sec">${table}<div class="lbl-sm" style="margin-top:12px">Partidas da noite</div>${hist || '<p class="hint">Nenhuma ainda.</p>'}</section>
       <div class="btn-row sec"><button class="btn" data-act="live-edit-teams">Ajustar times e nomes</button><button class="btn danger" data-act="live-finish">Encerrar a noite</button></div>
       <button class="btn ghost block" style="margin-top:8px" data-act="live-discard">Descartar a noite sem lançar (teste)</button>`;
@@ -1289,6 +1310,7 @@ function vPartida() {
     <div class="lbl-sm">Lances desta partida</div>
     ${ev || '<p class="hint">Nenhum lance ainda.</p>'}
     <div class="btn-row sec"><button class="btn" data-act="live-undo" ${m.events.length ? '' : 'disabled'}>Desfazer último</button><button class="btn primary" data-act="live-end">Encerrar partida</button></div>
+    ${liveLeadersHTML(l)}
     <section class="sec">${table}</section>`;
 }
 const GOAL_RULE = '2 gols vence';
@@ -1667,7 +1689,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 43.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 44.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2024,6 +2046,7 @@ function setFormat(f) { FEED = f === 'feed'; H = FEED ? 1350 : 1920; }
 const AWARD_SVG = {
   crown: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M10 47 6 20l14 11 12-20 12 20 14-11-4 27z" fill="#f2c230" stroke="#0a0f1e" stroke-width="3.5" stroke-linejoin="round"/><rect x="9" y="46" width="46" height="9" rx="2.5" fill="#e0a12a" stroke="#0a0f1e" stroke-width="3.5"/><circle cx="32" cy="11" r="4.5" fill="#d63050" stroke="#0a0f1e" stroke-width="3"/><circle cx="6" cy="20" r="4" fill="#d63050" stroke="#0a0f1e" stroke-width="3"/><circle cx="58" cy="20" r="4" fill="#d63050" stroke="#0a0f1e" stroke-width="3"/><circle cx="32" cy="38" r="3.5" fill="#3c8ea6"/></svg>`,
   boot: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M5 40c0-7 3-15 9-18l11-3c2 6 8 10 16 11l13 2c6 1 8 6 6 10l-2 5H8c-2-2-3-4-3-7z" fill="#d63050" stroke="#0a0f1e" stroke-width="3.5" stroke-linejoin="round"/><path d="M14 31c8 4 20 6 33 5" fill="none" stroke="#f2ece0" stroke-width="3.5" stroke-linecap="round"/><path d="M24 23l3 4M29 21l3 4M34 22l2 4" stroke="#f2ece0" stroke-width="2.6" stroke-linecap="round"/><rect x="7" y="47" width="51" height="5" rx="2" fill="#0a0f1e"/><path d="M13 52v6M23 52v6M41 52v6M51 52v6" stroke="#0a0f1e" stroke-width="5" stroke-linecap="round"/></svg>`,
+  wall: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><g stroke="#0a0f1e" stroke-width="2.6"><rect x="4" y="30" width="18" height="10" fill="#c0573e"/><rect x="22" y="30" width="18" height="10" fill="#b14a33"/><rect x="40" y="30" width="20" height="10" fill="#c0573e"/><rect x="4" y="40" width="9" height="10" fill="#b14a33"/><rect x="13" y="40" width="18" height="10" fill="#c0573e"/><rect x="31" y="40" width="18" height="10" fill="#b14a33"/><rect x="49" y="40" width="11" height="10" fill="#c0573e"/><rect x="4" y="50" width="18" height="10" fill="#c0573e"/><rect x="22" y="50" width="18" height="10" fill="#b14a33"/><rect x="40" y="50" width="20" height="10" fill="#c0573e"/></g><path d="M22 34V14c0-2.2 3.6-2.2 3.6 0v12-16c0-2.4 3.8-2.4 3.8 0v16-18c0-2.4 3.8-2.4 3.8 0v18-15c0-2.3 3.7-2.3 3.7 0v20l4-5c1.8-2.2 5-.2 3.6 2.2L37 42c-1.4 2.4-3.4 3.6-6 3.6h-3.4c-3.4 0-5.6-2.6-5.6-6z" fill="#f2ece0" stroke="#0a0f1e" stroke-width="3" stroke-linejoin="round"/><path d="M23 36h16" stroke="#3c8ea6" stroke-width="3.4"/></svg>`,
   hat: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path d="M18 9h28l-2 35H20z" fill="#1d2232" stroke="#0a0f1e" stroke-width="3.5" stroke-linejoin="round"/><path d="M19.4 33h25.2l-.5 8H19.9z" fill="#d63050"/><ellipse cx="32" cy="46" rx="27" ry="8" fill="#1d2232" stroke="#0a0f1e" stroke-width="3.5"/><path d="M23 13h4l-1 18h-3z" fill="#ffffff" opacity=".22"/></svg>`
 };
 const awardImgs = {};
@@ -2031,7 +2054,7 @@ async function awardImg(k) {
   if (!awardImgs[k]) awardImgs[k] = await loadImg('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(AWARD_SVG[k]));
   return awardImgs[k];
 }
-const AWARD_LABEL = { crown: 'Craque do mês', boot: 'Artilheiro do mês', hat: 'Garçom do mês' };
+const AWARD_LABEL = { crown: 'Craque do mês', boot: 'Artilheiro do mês', hat: 'Garçom do mês', wall: 'Goleiro menos vazado' };
 
 const loadImg = src => new Promise(res => { if (!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
 function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }

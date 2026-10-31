@@ -188,6 +188,23 @@ export function standings(l) {
   return T.sort((x, y) => (y.pts - x.pts) || (y.sg - x.sg) || (y.gf - x.gf) || (x.i - y.i));
 }
 
+// Destaques ao vivo (partidas encerradas + a que está rolando): artilheiro, garçom e goleiro menos vazado
+export function liveLeaders(l) {
+  const g = {}, a = {}, gk = {};
+  const matches = [...l.history, ...(l.match ? [{ ...l.match, ga: score(l.match)[0], gb: score(l.match)[1], gkA: l.match.gkA, gkB: l.match.gkB, live: true }] : [])];
+  matches.forEach(h => {
+    (h.events || []).forEach(e => { if (e.type === 'g') { if (e.pid) g[e.pid] = (g[e.pid] || 0) + 1; if (e.ast) a[e.ast] = (a[e.ast] || 0) + 1; } });
+    const add = (id, gc) => { if (!id) return; const x = gk[id] || (gk[id] = { id, mj: 0, gc: 0, cs: 0 }); x.mj++; x.gc += gc; if (!gc && !h.live) x.cs++; };
+    if (!h.live || h.events?.length || h.elapsed || h.runningSince) { add(h.gkA, h.gb); add(h.gkB, h.ga); }
+  });
+  const top = o => { const max = Math.max(0, ...Object.values(o)); return max ? { v: max, ids: Object.keys(o).filter(k => o[k] === max) } : { v: 0, ids: [] }; };
+  const gks = Object.values(gk);
+  const maxMj = Math.max(0, ...gks.map(x => x.mj));
+  const ok = gks.filter(x => x.mj >= Math.ceil(maxMj / 2)).sort((x, y) => (x.gc - y.gc) || (y.cs - x.cs) || (y.mj - x.mj));
+  const best = ok[0] ? ok.filter(x => x.gc === ok[0].gc && x.cs === ok[0].cs && x.mj === ok[0].mj) : [];
+  return { art: top(g), gar: top(a), gk: best.length ? { ids: best.map(x => x.id), gc: best[0].gc, mj: best[0].mj } : { ids: [], gc: 0, mj: 0 } };
+}
+
 export function teamWins(l) {
   const w = l.teams.map(() => 0);
   l.history.forEach(h => { if (h.winner != null) w[h.winner]++; });
