@@ -552,7 +552,7 @@ function roundBestHTML(r) {
       ${hlCard('Craque da noite', I.star, A.mvp ? [A.mvp] : [], A.mvp ? T[A.mvp.id].pts : 0, 'pts', 'mvp')}
       ${hlCard('Artilheiro da noite', I.ball, A.artilheiro, A.artilheiro.length ? T[A.artilheiro[0].id].g : 0, A.artilheiro.length && T[A.artilheiro[0].id].g === 1 ? 'gol' : 'gols')}
       ${hlCard('Garçom da noite', I.pass, A.garcom, A.garcom.length ? T[A.garcom[0].id].a : 0, 'assist.')}
-      ${gk && tg.mj ? hlCard('Goleiro menos vazado', I.glove, [gk], tg.gc || 0, `${(tg.gc || 0) === 1 ? 'sofrido' : 'sofridos'} em ${tg.mj} ${tg.mj === 1 ? 'jogo' : 'jogos'}`) : hlCard('Goleiro menos vazado', I.glove, gk ? [gk] : [], gk ? tg.cs : 0, 'sem sofrer')}
+      ${gk && tg.mj ? hlCard('Goleiro menos vazado', I.glove, [gk], tg.gc || 0, `${(tg.gc || 0) === 1 ? 'sofrido' : 'sofridos'} em ${tg.mj} ${tg.mj === 1 ? 'jogo' : 'jogos'}`) : r.bestGk && gk ? hlCard('Goleiro menos vazado', I.glove, [gk], '🧱', 'apontado pela comissão') : hlCard('Goleiro menos vazado', I.glove, gk ? [gk] : [], gk ? tg.cs : 0, 'sem sofrer')}
     </div>
     ${store.isMaster ? `<div class="btn-row sec"><button class="btn primary" data-act="share-round" data-id="${esc(r.id)}">${I.share}Compartilhar no Instagram</button></div>
     <p class="hint" style="margin-top:8px">Gera duas imagens, no feed ou no story: o time campeão e o time ideal da rodada.</p>` : ''}</section>`;
@@ -1760,7 +1760,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 49.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 50.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2383,7 +2383,7 @@ function roundBadges(A) {
   if (A.goleiro) (b[A.goleiro.id] = b[A.goleiro.id] || []).push('wall');
   return b;
 }
-const nightLine = (T, p) => { const t = T[p.id] || C.zero(); return p.pos === 'G' ? `${t.gc || 0} ${(t.gc || 0) === 1 ? 'sofrido' : 'sofridos'}` : [t.g ? `${t.g} ${t.g === 1 ? 'gol' : 'gols'}` : '', t.a ? `${t.a} assist.` : ''].filter(Boolean).join(' · ') || `${t.pts} pts`; };
+const nightLine = (T, p) => { const t = T[p.id] || C.zero(); return p.pos === 'G' ? (!t.mj ? 'Goleiro' : `${t.gc || 0} ${(t.gc || 0) === 1 ? 'sofrido' : 'sofridos'}`) : [t.g ? `${t.g} ${t.g === 1 ? 'gol' : 'gols'}` : '', t.a ? `${t.a} assist.` : ''].filter(Boolean).join(' · ') || `${t.pts} pts`; };
 
 // Campinho em imagem (feed ou story), reaproveitado pelos cards da rodada
 async function drawPitchCanvas(x, line, gk, badges, sub, opts = {}) {
@@ -2447,7 +2447,7 @@ function roundLegend(A) {
     ['crown', A.mvp ? `${dn(A.mvp)} (${T[A.mvp.id].pts} pts)` : '–', 'Craque da noite'],
     ['boot', A.artilheiro.length ? `${names(A.artilheiro)} (${T[A.artilheiro[0].id].g})` : '–', 'Artilheiro'],
     ['hat', A.garcom.length ? `${names(A.garcom)} (${T[A.garcom[0].id].a})` : '–', 'Garçom'],
-    ['wall', A.goleiro ? `${dn(A.goleiro)} (${T[A.goleiro.id].gc || 0} sofr.)` : '–', 'Menos vazado']
+    ['wall', A.goleiro ? (T[A.goleiro.id].mj ? `${dn(A.goleiro)} (${T[A.goleiro.id].gc || 0} sofr.)` : dn(A.goleiro)) : '–', 'Menos vazado']
   ];
 }
 async function cardRoundChampion(r, A, ch) {
