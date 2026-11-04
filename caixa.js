@@ -2,11 +2,11 @@
 export const DEFAULT_PRICES = { mensal: 50, diaria: 17 };
 export const EXPENSE_CATS = ['Aluguel do Campo', 'Goleiros', 'Água'];
 // Tipos de despesa e receita. freq: 'mes' (todo mês), 'pelada' (toda pelada) ou 'avulsa' (lança quando acontece)
-export const FREQS = { mes: 'Todo mês', pelada: 'Toda pelada', avulsa: 'Avulsa' };
+export const FREQS = { mes: 'Todo mês', pelada: 'Toda pelada', goleiro: 'Por goleiro em cada pelada', avulsa: 'Avulsa' };
 export const DEFAULT_CONFIG = {
   exp: [
     { name: 'Aluguel do Campo', amount: 900, freq: 'mes' },
-    { name: 'Goleiros', amount: 50, freq: 'pelada' },
+    { name: 'Goleiros', amount: 20, freq: 'goleiro' },
     { name: 'Água', amount: 8, freq: 'pelada' }
   ],
   inc: []
@@ -18,7 +18,8 @@ const entryGroup = x => (x.cat && x.cat !== 'Outros') ? x.cat : (x.desc || 'Sem 
 export function getConfig(finance) {
   const c = finance?.[CONFIG_ID] || {};
   // "Outros" deixou de existir: lançamento sem tipo usa a própria descrição
-  const clean = l => l.filter(t => !(t.name === 'Outros' && !(+t.amount)));
+  // goleiros: R$ 20 para cada goleiro em cada pelada (antes era um valor fixo por pelada)
+  const clean = l => l.filter(t => !(t.name === 'Outros' && !(+t.amount))).map(t => t.name === 'Goleiros' && t.freq === 'pelada' ? { ...t, amount: 20, freq: 'goleiro' } : t);
   return { exp: clean(c.exp || DEFAULT_CONFIG.exp), inc: clean(c.inc || DEFAULT_CONFIG.inc) };
 }
 const isMonthKey = k => /^\d{4}-\d{2}$/.test(k);
@@ -50,7 +51,9 @@ export function monthView(players, rounds, y, m, doc, cfg) {
   const key = monthKey(y, m);
   const tipo = p => p.tipo || 'M';
   // mensalistas: quem é Mensalista e está no elenco, mais quem já tem lançamento no mês
-  const feeIds = new Set(players.filter(p => tipo(p) === 'M' && p.active !== false).map(p => p.id));
+  // goleiros são fixos da pelada (recebem por pelada): não pagam mensalidade nem diária
+  const isGk = id => players.find(x => x.id === id)?.pos === 'G';
+  const feeIds = new Set(players.filter(p => tipo(p) === 'M' && p.active !== false && p.pos !== 'G').map(p => p.id));
   Object.entries(d.fees || {}).forEach(([id, f]) => { if (f?.excluded) feeIds.delete(id); else feeIds.add(id); });
   const fees = [...feeIds].map(id => {
     const p = players.find(x => x.id === id);
@@ -62,8 +65,8 @@ export function monthView(players, rounds, y, m, doc, cfg) {
   const pres = {};
   rounds.filter(r => r.date.slice(0, 7) === key).forEach(r => Object.entries(r.entries || {}).forEach(([pid, e]) => { if (e?.p) pres[pid] = (pres[pid] || 0) + (+e.p || 0); }));
   // quem paga mensalidade no mês não paga diária; quem é Mensalista mas ficou fora da lista do mês paga diária
-  const dayIds = new Set(Object.keys(pres).filter(id => { const p = players.find(x => x.id === id); return p && !feeIds.has(id); }));
-  Object.keys(d.daily || {}).forEach(id => dayIds.add(id));
+  const dayIds = new Set(Object.keys(pres).filter(id => { const p = players.find(x => x.id === id); return p && !feeIds.has(id) && p.pos !== 'G'; }));
+  Object.keys(d.daily || {}).forEach(id => { if (!isGk(id)) dayIds.add(id); });
   const daily = [...dayIds].map(id => {
     const p = players.find(x => x.id === id);
     const dd = d.daily?.[id] || {};
@@ -74,12 +77,17 @@ export function monthView(players, rounds, y, m, doc, cfg) {
   // despesas e receitas fixas: entram sozinhas a partir de outubro/2026 (dá para ajustar o valor do mês)
   cfg = cfg || DEFAULT_CONFIG;
   const nPel = peladasNoMes(rounds, key);
+  // presenças de goleiro no mês (se a rodada não registrou goleiros, conta 2 por pelada)
+  let nGk = 0;
+  rounds.filter(r => r.date.slice(0, 7) === key).forEach(r => Object.entries(r.entries || {}).forEach(([pid, e]) => { if (e?.p && isGk(pid)) nGk += +e.p || 0; }));
+  if (!nGk) nGk = 2 * nPel;
   d.fixed = { exp: { ...(d.fixed?.exp || {}) }, inc: { ...(d.fixed?.inc || {}) } };
   // fixas só a partir do início do caixa
   const fixedOf = kind => key < FINANCE_START ? [] : (cfg[kind] || []).filter(t => t.freq !== 'avulsa' && +t.amount > 0).map(t => {
     const o = d.fixed[kind][t.name] || {};
-    const base = t.freq === 'mes' ? +t.amount : +t.amount * nPel;
-    return { name: t.name, freq: t.freq, unit: +t.amount, n: nPel, amount: o.amount ?? base, custom: o.amount != null, off: !!o.off };
+    const n = t.freq === 'goleiro' ? nGk : nPel;
+    const base = t.freq === 'mes' ? +t.amount : +t.amount * n;
+    return { name: t.name, freq: t.freq, unit: +t.amount, n, amount: o.amount ?? base, custom: o.amount != null, off: !!o.off };
   }).filter(x => !x.off && x.amount > 0);
   const fixedExp = fixedOf('exp'), fixedInc = fixedOf('inc');
 

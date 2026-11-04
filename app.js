@@ -725,8 +725,31 @@ function publishedTeams(compact) {
     ${compact ? '' : `<p class="hint" style="margin-top:10px">Sorteio de ${when}${pub.by ? `, publicado por ${esc(pub.by)}` : ''}.</p>`}`;
 }
 
+// Depois que a rodada do sorteio foi lançada, os times saem da tela e entra o resultado parcial do mês
+function partialHTML() {
+  const n = now(); const y = n.getFullYear(), m = n.getMonth() + 1;
+  const A = C.monthAwards(store.rounds, store.players, y, m, store.settings);
+  if (!A.nRounds) return '';
+  const T = A.totals;
+  const top = store.players.filter(p => T[p.id]?.p > 0 && p.pos !== 'G').sort((a, b) => T[b.id].pts - T[a.id].pts).slice(0, 5);
+  return `<section class="sec"><div class="sec-head"><h2>Resultado parcial de ${C.MONTHS[m - 1].toLowerCase()}</h2><span class="muted small">${A.nRounds} ${A.nRounds === 1 ? 'rodada' : 'rodadas'}</span></div>
+    <div class="highlights">
+      ${hlCard('Craque até agora', I.star, A.mvp ? [A.mvp] : [], A.mvp ? T[A.mvp.id].pts : 0, 'pts', 'mvp')}
+      ${hlCard('Artilheiro', I.ball, A.artilheiro, A.artilheiro.length ? T[A.artilheiro[0].id].g : 0, 'gols')}
+      ${hlCard('Garçom', I.pass, A.garcom, A.garcom.length ? T[A.garcom[0].id].a : 0, 'assist.')}
+      ${hlCard('Melhor goleiro', I.glove, A.paredao ? [A.paredao] : [], A.paredao ? (T[A.paredao.id].mj ? T[A.paredao.id].gc : T[A.paredao.id].p) : 0, A.paredao && T[A.paredao.id].mj ? 'sofridos' : 'presenças')}
+    </div>
+    <div class="lbl-sm" style="margin-top:16px">Top 5 do mês</div>
+    <div class="sheet-table">${top.map((p, i) => `<a class="st-row top5" href="#/atleta/${esc(p.id)}"><span class="num">${i + 1}</span>${avatar(p, 's')}<span class="nm">${esc(dn(p))}<small>${T[p.id].g} gols · ${T[p.id].a} assist. · ${T[p.id].p} ${T[p.id].p === 1 ? 'presença' : 'presenças'}</small></span><span class="line"><b>${T[p.id].pts}</b> pts</span></a>`).join('')}</div>
+    <div class="btn-row" style="margin-top:12px"><a class="btn" href="#/ranking">Ranking completo</a><a class="btn" href="#/premios">Craque do mês</a></div></section>`;
+}
+
 function vTimesPublic() {
-  const pub = store.draw;
+  const pub0 = store.draw;
+  // a rodada daquele sorteio já foi lançada: os times saem da primeira tela
+  const done = pub0?.date && store.rounds.some(r => !r.summary && r.date >= pub0.date);
+  if (done) return heroHTML() + liveBannerHTML() + `<div class="page-head"><div><h1>Capelota</h1><p>A última rodada já foi lançada. Os times da próxima aparecem aqui quando a comissão publicar.</p></div></div>${partialHTML()}`;
+  const pub = pub0;
   const when = pub?.date ? C.parseDate(pub.date) : null;
   return heroHTML() + liveBannerHTML() + `<div class="page-head"><div><h1>Times</h1><p>${pub ? `Sorteio para ${['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][when.getDay()]}, ${C.fmtDate(pub.date, { year: false })}. Ache seu nome e veja seu time.` : 'Os times aparecem aqui assim que a comissão fizer o sorteio.'}</p></div></div>
     ${pub ? `<input class="search" type="search" placeholder="Ache seu nome" data-input="team-search" aria-label="Ache seu nome" style="margin-bottom:12px">` : ''}
@@ -860,7 +883,7 @@ function vCaixa() {
         <button class="st-row cx-row" data-act="cx-tab" data-t="dia">${ico}<span class="nm">Diárias<small>${v.daily.filter(d => d.paid).reduce((x, d) => x + d.count, 0)} diárias recebidas</small></span><span class="line"><b>${K.brl(T.dayPaid)}</b></span></button></div>`}
       <div class="cx-cards two" style="margin-top:10px">${cats.filter(c => c.typed).map(c => `<button class="cx-card ${isExp ? 'out' : 'in'}" data-act="cx-${kind}" data-cat="${esc(c.name)}"><span>${esc(c.name)}</span><b>${K.brl(c.amount)}</b><small>＋ lançar</small></button>`).join('')}</div>
       ${fixed.length ? `<div class="sec-head" style="margin-top:20px"><h2>Fixas do mês</h2><span class="muted small">entram sozinhas</span></div>
-      <div class="sheet-table">${fixed.map(f => `<button class="st-row cx-row" data-act="cx-fixed" data-k="${kind}" data-n="${esc(f.name)}">${ico}<span class="nm">${esc(f.name)}<small>${f.custom ? 'valor ajustado neste mês' : f.freq === 'mes' ? 'todo mês' : `${K.brl(f.unit)} × ${f.n} ${f.n === 1 ? 'pelada' : 'peladas'}`}</small></span><span class="line"><b>${K.brl(f.amount)}</b></span></button>`).join('')}</div>` : ''}
+      <div class="sheet-table">${fixed.map(f => `<button class="st-row cx-row" data-act="cx-fixed" data-k="${kind}" data-n="${esc(f.name)}">${ico}<span class="nm">${esc(f.name)}<small>${f.custom ? 'valor ajustado neste mês' : f.freq === 'mes' ? 'todo mês' : f.freq === 'goleiro' ? `${K.brl(f.unit)} × ${f.n} ${f.n === 1 ? 'presença de goleiro' : 'presenças de goleiro'}` : `${K.brl(f.unit)} × ${f.n} ${f.n === 1 ? 'pelada' : 'peladas'}`}</small></span><span class="line"><b>${K.brl(f.amount)}</b></span></button>`).join('')}</div>` : ''}
       <div class="sec-head" style="margin-top:20px"><h2>Lançadas</h2></div>
       ${list.length ? `<div class="sheet-table">${list.map(x => `<button class="st-row cx-row" data-act="cx-${kind}" data-id="${esc(x.id)}">${ico}
         <span class="nm">${esc(K.entryLabel(x))}<small>${x.qty > 1 ? `${x.qty} × ${K.brl(x.unit)} · ` : ''}${fmtD(x.date)}${x.receiptId ? ' · 📎 comprovante' : ''}</small></span><span class="line"><b>${K.brl(x.amount)}</b></span></button>`).join('')}</div>` : `<div class="empty" style="padding:18px"><p>Nenhuma ${word} lançada à mão neste mês.</p></div>`}
@@ -1064,7 +1087,7 @@ function fixedSheet(kind, name) {
   const v = cxView(); const f = (kind === 'exp' ? v.fixedExp : v.fixedInc).find(x => x.name === name); if (!f) return;
   const base = f.freq === 'mes' ? f.unit : f.unit * f.n;
   openSheet(`<h2>${esc(name)} · ${C.MONTHS[state.cx.m - 1].toLowerCase()}</h2>
-    <p class="muted">Valor fixo: ${K.brl(f.unit)} ${f.freq === 'mes' ? 'por mês' : `por pelada × ${f.n} = ${K.brl(base)}`}.</p>
+    <p class="muted">Valor fixo: ${K.brl(f.unit)} ${f.freq === 'mes' ? 'por mês' : f.freq === 'goleiro' ? `por goleiro em cada pelada × ${f.n} presenças = ${K.brl(base)}` : `por pelada × ${f.n} = ${K.brl(base)}`}.</p>
     <div class="field" style="margin-top:12px"><label for="fxVal">Valor neste mês</label><input class="input" id="fxVal" inputmode="decimal" value="${fmtNum(f.amount)}"></div>
     <button class="btn primary block" data-x="save">Salvar valor do mês</button>
     ${f.custom ? '<button class="btn block" style="margin-top:8px" data-x="reset">Voltar ao valor fixo</button>' : ''}
@@ -1760,7 +1783,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 50.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 51.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================

@@ -750,3 +750,4 @@ button.cx-card.in b { color: #3ccf8e; }
 .lv-score .tm { min-width: 0; }
 .lv-score .tm .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lv-score .gk-btn { font-size: 11.5px; padding: 4px 7px; }
+.st-row.top5 { grid-template-columns: 18px 32px minmax(0,1fr) auto; color: inherit; } .st-row.top5 .num { font-weight: 800; color: var(--texto-3); } .st-row.top5 .line { white-space: nowrap; }
