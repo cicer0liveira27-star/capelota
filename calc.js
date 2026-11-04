@@ -173,7 +173,10 @@ export function roundAwards(rounds, players, date, settings) {
   const { totals: T } = aggregate(rounds.filter(r => !r.summary), players, { type: 'round', date }, settings);
   const played = players.filter(p => T[p.id] && T[p.id].p > 0);
   const line = played.filter(p => p.pos !== 'G').sort(byPts(T));
-  const gks = rankGoalkeepers(played.filter(p => p.pos === 'G'), T);
+  let gks = rankGoalkeepers(played.filter(p => p.pos === 'G'), T);
+  // a comissão pode apontar o goleiro menos vazado da rodada (quando não houve contagem por partida)
+  const rr = rounds.find(r => r.date === date && !r.summary);
+  if (rr?.bestGk) { const g = players.find(p => p.id === rr.bestGk); if (g) gks = [g, ...gks.filter(p => p.id !== g.id)]; }
   return {
     totals: T,
     artilheiro: topGroup(played, T, 'g'),
