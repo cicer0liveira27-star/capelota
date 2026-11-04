@@ -736,3 +736,17 @@ button.cx-card.in b { color: #3ccf8e; }
 .champ-stats span { background: var(--vest); border: 1px solid var(--risca); border-radius: 12px; padding: 8px 2px; text-align: center; font-size: 11px; color: var(--texto-3); display: flex; flex-direction: column; gap: 2px; }
 .champ-stats b { font-family: var(--fd); font-size: 20px; color: var(--texto); font-weight: 900; }
 .team-share { margin-top: 10px; }
+
+/* confirmação de time completo e escalação */
+.lv-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; padding: 12px; border-radius: 14px; border: 1px solid var(--amarelo); background: color-mix(in srgb, var(--amarelo) 10%, var(--vest)); }
+.lv-confirm > span:not(.dot) { flex: 1 1 80%; line-height: 1.35; }
+.lv-confirm small { display: block; color: var(--texto-2); }
+.lv-confirm .btn { flex: 1; }
+.lv-score .tm .gk-btn + .gk-btn { display: block; margin: 6px auto 0; }
+.pk.off { opacity: .55; border-style: dashed; }
+.pk .small { font-size: 11px; color: var(--texto-2); }
+.mt-more summary { cursor: pointer; list-style: none; }
+.lv-score { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.lv-score .tm { min-width: 0; }
+.lv-score .tm .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lv-score .gk-btn { font-size: 11.5px; padding: 4px 7px; }

@@ -112,12 +112,12 @@ const state = {
   rankGroup: 'L', rankStat: 'pts',
   albumFilter: 'all', search: '',
   awards: null,
-  draw: { sel: new Set(drawSaved.sel || []), n: drawSaved.n || 4, mode: drawSaved.mode || 'equilibrado', result: null, animate: false, names: drawSaved.names || [] },
+  draw: { sel: new Set(drawSaved.sel || []), n: drawSaved.n || 4, mode: drawSaved.mode || 'equilibrado', result: drawSaved.result || null, out: drawSaved.out || [], manual: !!drawSaved.manual, animate: false, names: drawSaved.names || [] },
   editor: null,
   installPrompt: null,
   firstDataRender: false
 };
-function saveDraw() { localStorage.setItem('capelota:draw', JSON.stringify({ sel: [...state.draw.sel], n: state.draw.n, mode: state.draw.mode, names: state.draw.names || [] })); }
+function saveDraw() { const d = state.draw; try { localStorage.setItem('capelota:draw', JSON.stringify({ sel: [...d.sel], n: d.n, mode: d.mode, names: d.names || [], result: d.result || null, out: d.out || [], manual: !!d.manual })); } catch (e) {} }
 // nome do time no sorteio (editável pela comissão)
 const PER_TEAM = 5; // 5 na linha por time; goleiros ficam soltos
 const dName = i => (state.draw.names?.[i] || '').trim() || TEAM_NAMES[i];
@@ -762,14 +762,15 @@ function vSorteio() {
         <button class="btn" data-act="draw-share">${I.whats}Mandar no grupo</button>
         <button class="btn" data-act="draw-go">${I.shuffle}Sortear de novo</button>
       </div>
-      <button class="btn primary block" style="margin-top:10px" data-act="draw-publish">Publicar para a galera</button>
+      <button class="btn primary block" style="margin-top:10px" data-act="draw-publish">${store.draw?.teams?.length ? 'Publicar para a galera (atualiza o que já foi publicado)' : 'Publicar para a galera'}</button>
       <button class="btn primary block" style="margin-top:10px;background:var(--faixa);border-color:var(--faixa)" data-act="live-start">🔴 Começar rodada ao vivo com esses times</button>
       <button class="btn block" style="margin-top:10px" data-act="draw-to-round">Lançar rodada com esses times</button>
     </section>`;
   }
 
   const liveBanner = L.loadLive() ? `<a class="live-banner" href="#/partida"><i></i><span><b>Rodada ao vivo em andamento</b><br>Toque para voltar à partida</span></a>` : '';
-  const pubBlock = store.draw?.teams?.length ? `<details class="panel" style="margin-bottom:18px"><summary style="cursor:pointer;font-weight:700">Times publicados para a galera (${C.fmtDate(store.draw.date, { year: false })})</summary><div style="margin-top:12px">${publishedTeams()}</div></details>` : '';
+  const pubBlock = store.draw?.teams?.length ? `<details class="panel" style="margin-bottom:18px"><summary style="cursor:pointer;font-weight:700">Times publicados para a galera (${C.fmtDate(store.draw.date, { year: false })})</summary><div style="margin-top:12px">${publishedTeams()}</div>
+    <button class="btn block" style="margin-top:12px" data-act="draw-load-pub">✏ Editar os times publicados</button></details>` : '';
   return `<div class="page-head"><div><h1>Sorteio</h1><p>Marque quem chegou. Sorteie os times ou monte à mão (draft do WhatsApp). Depois publique para a galera ver.</p></div></div>
     ${liveBanner}${pubBlock}
     <div class="sec-head"><h3>Quem vai jogar</h3><span class="muted small"><b class="num" style="font-size:20px;color:var(--texto)">${sel.length}</b> marcados</span></div>
@@ -794,7 +795,7 @@ function vSorteio() {
       </div>
       <p class="hint" style="margin-bottom:12px">${d.n} times de ${PER_TEAM} na linha = ${d.n * PER_TEAM} atletas. Marcados: ${nL} na linha${nL > d.n * PER_TEAM ? ` (sobram ${nL - d.n * PER_TEAM}: ficam de fora primeiro os diaristas)` : nL < d.n * PER_TEAM ? ` (faltam ${d.n * PER_TEAM - nL}: ${per} por time${extra ? `, ${extra} com 1 a mais` : ''})` : ''} e ${nG} ${nG === 1 ? 'goleiro solto' : 'goleiros soltos'}.</p>
       <button class="btn primary block" data-act="draw-go" ${nL < d.n ? 'disabled' : ''}>${I.shuffle}Sortear times</button>
-      <button class="btn block" style="margin-top:10px" data-act="draw-manual-new" ${nL < 1 ? 'disabled' : ''}>✋ Montar times à mão (draft)</button>
+      <button class="btn block" style="margin-top:10px" data-act="draw-manual-new">✋ Montar times à mão (draft)</button>
     </section>
     ${result}`;
 }
@@ -1281,22 +1282,17 @@ function vPartida() {
   const hist = liveHistHTML(l);
 
   if (!l.match) {
-    const { fixed, pool, sugg: b, tied, pc } = L.nextOptions(l);
-    const minPc = pool.length ? pc[pool[0]] : 0;
+    const pc = L.playedCount(l);
+    const sug = L.nextPair(l);
+    const pick = (state.livePick && state.livePick.h === l.history.length && state.livePick.id === l.id) ? state.livePick.sel : sug.filter(x => x != null);
     const last = l.history[l.history.length - 1];
-    const head = last ? (last.winner != null ? `${tName(l, last.winner)} venceu` : 'Empate') : 'Próxima partida';
-    const sub = last ? (last.winner != null ? `${tName(l, last.a)} ${last.ga} × ${last.gb} ${tName(l, last.b)}. ${tName(l, last.winner)} fica em campo.` : `${tName(l, last.a)} ${last.ga} × ${last.gb} ${tName(l, last.b)}. As duas equipes saem e entram os times de fora.`) : '';
+    const head = last ? (last.winner != null ? `${tName(l, last.winner)} venceu` : 'Empate') : 'Primeira partida';
+    const sub = last ? `${tName(l, last.a)} ${last.ga} × ${last.gb} ${tName(l, last.b)}. Escolha os dois times da próxima partida.` : 'Escolha os dois times que começam. Se um time estiver incompleto, coloque outro que já está completo.';
+    const ready = pick.length === 2;
     return `<a class="back" href="#/inicio">${I.back}Início</a><div class="page-head"><div><h1>${head}</h1><p>${sub}</p></div></div>
-      ${tied.length > 1 ? `
-      <div class="lbl-sm">${l.stay != null ? 'Fica em campo' : 'Entra'}</div>
-      <div class="lv-next"><div class="lv-team on">${tDot(fixed)}<b>${tName(l, fixed)}</b><span>${pc[fixed]} ${pc[fixed] === 1 ? 'partida' : 'partidas'}${l.stay != null ? ' · venceu' : ''}</span><small>${l.teams[fixed].ids.map(id => esc(dn(playerById(id)))).join(', ')}</small></div></div>
-      <div class="lbl-sm" style="margin-top:14px">Adversário: sorteio entre ${tied.map(i => tName(l, i)).join(' e ')} (${minPc} ${minPc === 1 ? 'jogo' : 'jogos'} cada)</div>
-      ${l.raffle && l.raffle.h === l.history.length ? `<div class="raffle-win" style="font-size:24px;padding:16px;margin-top:8px">🎲 ${tDot(l.raffle.pick)}<b>${tName(l, l.raffle.pick)}</b></div>
-      <button class="btn primary block" style="margin-top:12px;min-height:56px;font-size:17px" data-act="live-next" data-opp="${l.raffle.pick}">▶ ${tName(l, fixed)} × ${tName(l, l.raffle.pick)}</button>`
-      : `<button class="btn primary block" style="margin-top:8px;min-height:56px;font-size:17px" data-act="live-raffle">🎲 Sortear quem entra</button>`}` : `
-      <div class="lbl-sm">${l.stay != null ? `Adversário de ${tName(l, fixed)}` : `Entra com ${tName(l, fixed)}`}</div>
-      <div class="lv-next">${pool.map(ti => `<button class="lv-team ${ti === b ? 'on' : ''}" data-act="live-next" data-opp="${ti}">${tDot(ti)}<b>${tName(l, ti)}</b><span>${pc[ti]} ${pc[ti] === 1 ? 'partida' : 'partidas'}${ti === b ? ' · próximo' : ''}</span><small>${l.teams[ti].ids.map(id => esc(dn(playerById(id)))).join(', ')}</small></button>`).join('')}</div>
-      <button class="btn primary block" style="margin-top:12px;min-height:56px;font-size:17px" data-act="live-next" data-opp="${b}">▶ ${tName(l, fixed)} × ${tName(l, b)}</button>`}
+      <div class="lbl-sm">Toque em dois times</div>
+      <div class="lv-next">${l.teams.map((t, ti) => { const on = pick.includes(ti); const abs = (t.absent || []).length; return `<button class="lv-team ${on ? 'on' : ''}" data-act="live-pick" data-t="${ti}">${tDot(ti)}<b>${tName(l, ti)}</b><span>${pc[ti]} ${pc[ti] === 1 ? 'partida' : 'partidas'}${last && last.winner === ti ? ' · venceu' : ''}${t.confirmed ? ' · ✅ confirmado' : ''}${abs ? ` · ⚠ ${abs} ${abs === 1 ? 'faltando' : 'faltando'}` : ''}</span><small>${L.defaultLineup(l, ti).map(id => esc(dn(playerById(id)))).join(', ')}</small></button>`; }).join('')}</div>
+      <button class="btn primary block" style="margin-top:12px;min-height:56px;font-size:17px" data-act="live-start-match" ${ready ? '' : 'disabled'}>${ready ? `▶ ${tName(l, pick[0])} × ${tName(l, pick[1])}` : 'Escolha dois times'}</button>
       ${liveLeadersHTML(l)}
       <section class="sec">${table}<div class="lbl-sm" style="margin-top:12px">Partidas da noite</div>${hist || '<p class="hint">Nenhuma ainda.</p>'}</section>
       <div class="btn-row sec"><button class="btn" data-act="live-edit-teams">Ajustar times e nomes</button><button class="btn danger" data-act="live-finish">Encerrar a noite</button></div>
@@ -1310,10 +1306,12 @@ function vPartida() {
   const txt = i => (i % 4 === 2 || i % 4 === 1) ? 'color:var(--noite)' : '';
   return `<div class="lv-head"><b>Partida ${m.n}</b>${running ? '<span class="live"><i></i>AO VIVO</span>' : '<span class="live paused">PAUSADO</span>'}</div>
     <div class="lv-score">
-      <div class="tm">${tDot(m.a)}<div class="n">${tName(l, m.a)}</div><button class="gk-btn" data-act="live-gk" data-side="A">🧤 ${gkName(m.gkA)}</button></div>
+      <div class="tm">${tDot(m.a)}<div class="n">${tName(l, m.a)}</div><button class="gk-btn" data-act="live-gk" data-side="A">🧤 ${gkName(m.gkA)}</button><button class="gk-btn" data-act="live-lineup" data-t="${m.a}">👥 ${L.lineupOf(l, m.a).length} ✎</button></div>
       <div class="big"><span id="lvGa">${ga}</span><small>×</small><span id="lvGb">${gb}</span></div>
-      <div class="tm">${tDot(m.b)}<div class="n">${tName(l, m.b)}</div><button class="gk-btn" data-act="live-gk" data-side="B">🧤 ${gkName(m.gkB)}</button></div>
+      <div class="tm">${tDot(m.b)}<div class="n">${tName(l, m.b)}</div><button class="gk-btn" data-act="live-gk" data-side="B">🧤 ${gkName(m.gkB)}</button><button class="gk-btn" data-act="live-lineup" data-t="${m.b}">👥 ${L.lineupOf(l, m.b).length} ✎</button></div>
     </div>
+    ${[m.a, m.b].filter(ti => !l.teams[ti].confirmed).map(ti => `<div class="lv-confirm">${tDot(ti)}<span><b>${tName(l, ti)}</b> está completo? <small>${L.lineupOf(l, ti).map(id => esc(dn(playerById(id)))).join(', ')}</small></span>
+      <button class="btn sm primary" data-act="live-confirm" data-t="${ti}">✅ Completo</button><button class="btn sm" data-act="live-lineup" data-t="${ti}">✏ Ajustar</button></div>`).join('')}
     <div class="lv-clock"><b id="lvClock">${L.fmtClock(L.remaining(m))}</b><span>${L.remaining(m) === 0 ? 'Tempo esgotado' : `restam de 08:00 · ${GOAL_RULE}`}</span></div>
     <button class="btn block lv-pause ${running ? '' : 'go'}" data-act="live-clock">${running ? '⏸ Parar cronômetro' : (L.elapsed(m) ? '▶ Continuar' : '▶ Começar partida')}</button>
     <div id="lvSusp">${liveSuspHTML(m)}</div>
@@ -1383,7 +1381,7 @@ function pickPlayerSheet(title, ids, opts = {}) {
 function onField(l, team) {
   const m = l.match; const out = new Set(L.suspended(m).map(x => x.pid));
   const gk = team === m.a ? m.gkA : m.gkB;
-  return [...l.teams[team].ids.filter(id => !out.has(id)), ...(gk && !out.has(gk) ? [gk] : [])];
+  return [...L.lineupOf(l, team).filter(id => !out.has(id)), ...(gk && !out.has(gk) ? [gk] : [])];
 }
 
 async function liveGoal(team) {
@@ -1416,9 +1414,58 @@ async function liveCard(kind) {
   if (!pid) return;
   const l2 = L.loadLive(); if (!l2?.match) return;
   const mm = l2.match;
-  const team = (l2.teams[mm.a].ids.includes(pid) || mm.gkA === pid) ? mm.a : mm.b;
+  const team = (L.lineupOf(l2, mm.a).includes(pid) || mm.gkA === pid) ? mm.a : mm.b;
   L.addEvent(l2, { type: kind, team, pid });
   L.saveLive(l2); render();
+}
+
+// Escalação de um time na partida: quem faltou sai, e entra alguém de um time que está de fora
+function liveLineupSheet(ti) {
+  const l = L.loadLive(); if (!l?.match) return;
+  const m = l.match; const t = l.teams[ti];
+  const other = ti === m.a ? m.b : m.a;
+  let line = [...L.lineupOf(l, ti)];
+  let absent = [...(t.absent || [])];
+  const otherLine = new Set(L.lineupOf(l, other));
+  const draw = s => {
+    const members = t.ids;
+    const subs = line.filter(id => !members.includes(id));
+    $('#luBody', s).innerHTML = `<div class="lbl-sm">Elenco do ${esc(t.name)} (toque para marcar quem faltou)</div>
+      <div class="pick">${members.map(id => { const p = playerById(id); const on = line.includes(id); return `<button type="button" class="pk ${on ? 'on' : 'off'}" data-lu="tg" data-id="${esc(id)}">${avatar(p, 's')}<span class="nm">${esc(dn(p))}</span><span class="small">${on ? '✅ em campo' : '❌ faltou'}</span></button>`; }).join('')}</div>
+      <div class="lbl-sm" style="margin-top:12px">Substitutos nesta partida</div>
+      <div class="pick">${subs.map(id => { const p = playerById(id); return `<button type="button" class="pk on" data-lu="rm" data-id="${esc(id)}">${avatar(p, 's')}<span class="nm">${esc(dn(p))}</span><span class="small">tirar</span></button>`; }).join('') || '<span class="hint">Nenhum.</span>'}</div>
+      <button type="button" class="btn block" style="margin-top:8px" data-lu="add">＋ Pôr jogador de um time de fora</button>
+      <p class="hint" style="margin-top:8px">Em campo: ${line.length}. Gols e assistências contam para quem fizer, em qualquer time.</p>`;
+  };
+  const open = () => openSheet(`<h2>Escalação: ${esc(t.name)}</h2><div id="luBody"></div>
+    <button class="btn primary block" style="margin-top:14px" data-lu="save">Salvar e confirmar time</button>`, s => {
+    draw(s);
+    s.addEventListener('click', ev => { const b = ev.target.closest('[data-lu]'); if (b) handle(b, s); });
+  });
+  const handle = async (b, s) => {
+    const x = b.dataset.lu, id = b.dataset.id;
+    if (x === 'tg') { if (line.includes(id)) { line = line.filter(i => i !== id); if (!absent.includes(id)) absent.push(id); } else { line.push(id); absent = absent.filter(i => i !== id); } draw(s); }
+    if (x === 'rm') { line = line.filter(i => i !== id); draw(s); }
+    if (x === 'add') {
+      // primeiro quem está nos times de fora, depois o resto do elenco
+      const busy = new Set([...line, ...otherLine, m.gkA, m.gkB].filter(Boolean));
+      const outTeams = l.teams.map((tt, k) => k).filter(k => k !== m.a && k !== m.b).flatMap(k => l.teams[k].ids);
+      const rest = store.players.filter(p => p.active !== false && p.pos !== 'G').map(p => p.id).filter(i => !l.teams.some(tt => tt.ids.includes(i)));
+      const cands = [...outTeams, ...rest].filter(i => !busy.has(i));
+      closeSheet();
+      const pid = await pickPlayerSheet(`Quem entra no ${t.name}?`, cands, { sub: 'Primeiro aparecem os jogadores dos times que estão de fora.' });
+      if (pid) line.push(pid);
+      open();
+    }
+    if (x === 'save') save();
+  };
+  const save = () => {
+    const l2 = L.loadLive(); if (!l2?.match) return;
+    l2.match.lineups = { ...(l2.match.lineups || {}), [ti]: line };
+    l2.teams[ti].absent = absent; l2.teams[ti].confirmed = true;
+    L.saveLive(l2); closeSheet(); render(); toast('Escalação salva');
+  };
+  open();
 }
 
 // Escolhe o goleiro de um lado
@@ -1518,7 +1565,8 @@ const drawGks = () => [...state.draw.sel].filter(id => { const p = playerById(id
 // Montar/ajustar os times à mão (draft feito no WhatsApp)
 function manualTeamsSheet(fresh) {
   const d = state.draw;
-  const line = [...d.sel].map(playerById).filter(p => p && p.pos !== 'G' && p.active !== false).sort((a, b) => dn(a).localeCompare(dn(b)));
+  // todo o elenco de linha: quem foi marcado em "Quem vai jogar" aparece primeiro; dá para pôr qualquer um (quem chegou de última hora)
+  const line = store.players.filter(p => p.pos !== 'G' && p.active !== false).sort((a, b) => dn(a).localeCompare(dn(b)));
   let n = d.n || 4;
   const where = {};
   if (!fresh && d.result) d.result.forEach((t, i) => t.forEach(id => { where[id] = i; }));
@@ -1527,11 +1575,13 @@ function manualTeamsSheet(fresh) {
     <p class="muted" style="margin:-6px 0 12px">Toque no atleta para passar de time (A → B → C… → fora). Goleiros ficam soltos.</p>
     <div class="seg" id="mtN" style="margin-bottom:12px">${[2, 3, 4].map(k => `<button type="button" class="${k === n ? 'on' : ''}" data-mt="n" data-n="${k}">${k} times</button>`).join('')}</div>
     <div id="mtBody"></div>
-    <button class="btn primary block" style="margin-top:14px" data-mt="save">Salvar times</button>`, s => {
+    <button class="btn primary block" style="margin-top:14px" data-mt="save">Salvar times</button>
+    <p class="hint" style="margin-top:8px">Salvar guarda os times neste celular. Depois toque em "Publicar para a galera". Dá para voltar e editar quantas vezes precisar.</p>`, s => {
     const draw = () => {
-      $('#mtBody', s).innerHTML = [...Array.from({ length: n }, (_, i) => i), -1].map(i => {
-        const ps = line.filter(p => (where[p.id] ?? -1) === i);
-        return `<div class="group-title" style="display:flex;gap:8px;align-items:center">${i >= 0 ? `${tDot(i)}${esc(dName(i))} <span class="small" style="color:${ps.length === PER_TEAM ? '#3ccf8e' : ps.length > PER_TEAM ? 'var(--sombrero-claro)' : 'var(--texto-3)'}">(${ps.length}/${PER_TEAM})</span>` : 'Sem time'}</div>
+      $('#mtBody', s).innerHTML = [...Array.from({ length: n }, (_, i) => i), -1, -2].map(i => {
+        const ps = i === -2 ? line.filter(p => where[p.id] == null && !d.sel.has(p.id)) : i === -1 ? line.filter(p => where[p.id] == null && d.sel.has(p.id)) : line.filter(p => where[p.id] === i);
+        if (i === -2) return `<details class="mt-more"><summary class="group-title">Outros do elenco (${ps.length}) · toque para abrir</summary><div class="pick">${ps.map(p => `<button type="button" class="pk" data-mt="mv" data-id="${esc(p.id)}">${avatar(p, 's')}<span class="nm">${esc(dn(p))}</span></button>`).join('')}</div></details>`;
+        return `<div class="group-title" style="display:flex;gap:8px;align-items:center">${i >= 0 ? `${tDot(i)}${esc(dName(i))} <span class="small" style="color:${ps.length === PER_TEAM ? '#3ccf8e' : ps.length > PER_TEAM ? 'var(--sombrero-claro)' : 'var(--texto-3)'}">(${ps.length}/${PER_TEAM})</span>` : 'Marcados sem time'}</div>
         <div class="pick">${ps.map(p => `<button type="button" class="pk" data-mt="mv" data-id="${esc(p.id)}">${avatar(p, 's')}<span class="nm">${esc(dn(p))}</span></button>`).join('') || '<span class="hint">Ninguém</span>'}</div>`;
       }).join('');
     };
@@ -1544,7 +1594,9 @@ function manualTeamsSheet(fresh) {
       if (x === 'save') {
         const res = Array.from({ length: n }, (_, i) => line.filter(p => where[p.id] === i).map(p => p.id));
         if (res.filter(t => t.length).length < 2) { toast('Monte pelo menos 2 times', true); return; }
-        d.result = res; d.n = n; d.manual = true; d.out = line.filter(p => where[p.id] == null).map(p => p.id); d.animate = false; saveDraw(); closeSheet(); render();
+        // quem entrou num time passa a contar como marcado
+        res.flat().forEach(id => d.sel.add(id));
+        d.result = res; d.n = n; d.manual = true; d.out = line.filter(p => where[p.id] == null && d.sel.has(p.id)).map(p => p.id); d.animate = false; saveDraw(); closeSheet(); render();
         setTimeout(() => $('#drawResult')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
       }
     });
@@ -1708,7 +1760,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 47.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 48.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2690,11 +2742,18 @@ const actions = {
     const line = lineAll.map(p => ({ p, r: (rank[tipoOf(p)] ?? 2) + Math.random() * 0.5 })).sort((a, b) => a.r - b.r).map(x => x.p);
     const inn = line.slice(0, cap), out = line.slice(cap);
     state.draw.result = C.drawTeams(inn, state.draw.n, state.draw.mode).map(t => t.map(p => p.id));
-    state.draw.out = out.map(p => p.id);
+    state.draw.out = out.map(p => p.id); saveDraw();
     state.draw.manual = false; state.draw.animate = true; render();
     setTimeout(() => $('#drawResult')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   },
   'draw-manual-new': () => manualTeamsSheet(true),
+  'draw-load-pub': () => {
+    const pub = store.draw; if (!pub?.teams?.length) return;
+    const d = state.draw;
+    d.result = pub.teams.map(t => [...t.ids]); d.names = pub.teams.map(t => t.name); d.n = pub.teams.length; d.manual = true; d.out = [];
+    pub.teams.forEach(t => t.ids.forEach(id => d.sel.add(id))); (pub.gks || []).forEach(id => d.sel.add(id));
+    saveDraw(); manualTeamsSheet(false);
+  },
   'draw-rename': el => {
     const i = +el.dataset.i;
     openSheet(`<h2>Nome do time</h2><div class="field"><input class="input" id="tmName" maxlength="24" value="${esc(dName(i))}" autofocus></div>
@@ -2743,7 +2802,8 @@ const actions = {
     keepAwake(true);
     location.hash = '#/partida';
   },
-  'live-clock': () => { const l = L.loadLive(); if (!l?.match) return; if (L.remaining(l.match) === 0) { liveEndFlow('Tempo esgotado'); return; } L.toggleClock(l); L.saveLive(l); keepAwake(true); render(); },
+  'live-clock': () => { const l = L.loadLive(); if (!l?.match) return;
+    if (!l.match.runningSince && !L.elapsed(l.match)) { const nc = [l.match.a, l.match.b].filter(ti => !l.teams[ti].confirmed); if (nc.length) { toast(`Confirme se ${nc.map(ti => l.teams[ti].name).join(' e ')} ${nc.length > 1 ? 'estão completos' : 'está completo'}`, true); return; } } if (L.remaining(l.match) === 0) { liveEndFlow('Tempo esgotado'); return; } L.toggleClock(l); L.saveLive(l); keepAwake(true); render(); },
   'live-goal': el => liveGoal(+el.dataset.team),
   'live-card': el => liveCard(el.dataset.c),
   'live-undo': () => { const l = L.loadLive(); if (!l?.match) return; const e = L.undo(l); L.saveLive(l); render(); if (e) toast('Último lance desfeito'); },
@@ -2751,6 +2811,21 @@ const actions = {
   'live-gk': el => liveGk(el.dataset.side),
   'live-view': () => openLiveViewer(),
   'sheet-close-go': el => { closeSheet(); location.hash = el.getAttribute('href') || '#/partida'; },
+  'live-pick': el => {
+    const l = L.loadLive(); if (!l || l.match) return;
+    const t = +el.dataset.t;
+    let sel = (state.livePick && state.livePick.h === l.history.length && state.livePick.id === l.id) ? [...state.livePick.sel] : L.nextPair(l).filter(x => x != null);
+    if (sel.includes(t)) sel = sel.filter(x => x !== t); else { sel.push(t); if (sel.length > 2) sel = sel.slice(-2); }
+    state.livePick = { id: l.id, h: l.history.length, sel }; render();
+  },
+  'live-start-match': () => {
+    const l = L.loadLive(); if (!l || l.match) return;
+    const sel = (state.livePick && state.livePick.h === l.history.length && state.livePick.id === l.id) ? state.livePick.sel : L.nextPair(l);
+    if (sel.length !== 2 || sel[0] == null || sel[1] == null) { toast('Escolha dois times', true); return; }
+    L.startMatch(l, sel[0], sel[1]); state.livePick = null; L.saveLive(l); keepAwake(true); render(); window.scrollTo(0, 0);
+  },
+  'live-confirm': el => { const l = L.loadLive(); if (!l) return; l.teams[+el.dataset.t].confirmed = true; L.saveLive(l); render(); toast('Time confirmado'); },
+  'live-lineup': el => liveLineupSheet(+el.dataset.t),
   'live-raffle': () => {
     const l = L.loadLive(); if (!l || l.match) return;
     const { fixed, tied } = L.nextOptions(l); if (tied.length < 2) return;

@@ -1,7 +1,8 @@
 // Partida ao vivo: 8 minutos ou 2 gols (o que vier primeiro), rodízio de times e lançamento automático da rodada.
 // Regras da Capelota:
-//  - quem vence fica; quem perde vai para o fim da fila
-//  - empate: as duas equipes saem; na volta, joga primeiro quem tiver menos partidas disputadas
+//  - a comissão escolhe livremente quais times jogam cada partida (o app só sugere: quem vence fica)
+//  - antes do primeiro jogo de cada time, confirma-se se o time está completo; se faltar alguém,
+//    entra um jogador de um time que está de fora, e gols/assistências contam para quem fez
 //  - cartão azul: 2 minutos fora; amarelo: continua; vermelho: fora até o fim da partida (volta no outro jogo)
 //  - goleiros ficam soltos: a cada partida escolhe-se quem está no gol de cada time
 // O estado fica no aparelho do master que está contando e é publicado no banco para todo mundo acompanhar.
@@ -27,17 +28,22 @@ export function newNight(teams, date, gks = []) {
     id: 'n-' + Date.now().toString(36),
     date, teams: teams.map((t, i) => ({ name: t.name || ['Time A', 'Time B', 'Time C', 'Time D'][i], ids: [...t.ids] })),
     gks: [...gks],
-    queue: teams.map((_, i) => i).slice(2), // quem espera, em ordem
+    queue: teams.map((_, i) => i), // ordem sugerida
     match: null,
     history: []
   };
-  l.match = newMatch(0, 1, 1, gks[0] || null, gks[1] || null);
+  l.teams.forEach(t => { t.absent = []; t.confirmed = false; });
   return l;
 }
 
-export function newMatch(a, b, n, gkA = null, gkB = null) {
-  return { n, a, b, gkA, gkB, elapsed: 0, runningSince: null, events: [], ended: false };
+export function newMatch(a, b, n, gkA = null, gkB = null, lineups = {}) {
+  return { n, a, b, gkA, gkB, lineups, elapsed: 0, runningSince: null, events: [], ended: false };
 }
+
+// Escalação padrão de um time: o elenco menos quem está marcado como ausente
+export function defaultLineup(l, ti) { const t = l.teams[ti]; return t.ids.filter(id => !(t.absent || []).includes(id)); }
+// Quem está escalado por um time na partida em andamento
+export function lineupOf(l, ti) { const m = l.match; return (m && m.lineups && m.lineups[ti]) || defaultLineup(l, ti); }
 
 export function elapsed(m) { return m.elapsed + (m.runningSince ? Date.now() - m.runningSince : 0); }
 export function remaining(m) { return Math.max(0, MATCH_MS - elapsed(m)); }
@@ -83,51 +89,29 @@ export function endMatch(l) {
   const m = l.match; pause(l);
   const [ga, gb] = score(m);
   const winner = ga > gb ? m.a : gb > ga ? m.b : null;
-  l.history.push({ n: m.n, a: m.a, b: m.b, ga, gb, winner, gkA: m.gkA || null, gkB: m.gkB || null, events: m.events, time: elapsed(m) });
-  if (winner != null) {
-    const leave = winner === m.a ? m.b : m.a;
-    l.queue = l.queue.filter(i => i !== leave).concat(leave);
-    l.stay = winner;
-  } else {
-    const pc = playedCount(l);
-    const back = [m.a, m.b].sort((x, y) => pc[x] - pc[y] || x - y);
-    l.queue = l.queue.filter(i => i !== m.a && i !== m.b).concat(back);
-    l.stay = null;
-  }
+  l.history.push({ n: m.n, a: m.a, b: m.b, ga, gb, winner, gkA: m.gkA || null, gkB: m.gkB || null, lineups: { [m.a]: lineupOf(l, m.a), [m.b]: lineupOf(l, m.b) }, events: m.events, time: elapsed(m) });
+  // fila só para sugerir o próximo jogo: quem jogou vai para o fim (o vencedor fica)
+  const out = winner != null ? [winner === m.a ? m.b : m.a] : [m.a, m.b];
+  l.queue = l.queue.filter(i => !out.includes(i) && i !== winner).concat(out);
+  l.stay = winner;
   l.lastGk = { [m.a]: m.gkA || null, [m.b]: m.gkB || null };
   l.match = null;
   return { winner, ga, gb };
 }
 
-// Próximo confronto sugerido: [time A, time B]
-// Quem pode entrar na próxima partida.
-//  fixed: time que já está garantido (quem venceu, ou o primeiro de fora no empate)
-//  pool: candidatos para o outro lado (só quem estava de fora; os que acabaram de jogar só voltam se não houver ninguém de fora)
-//  tied: candidatos com o mesmo número de jogos (aí dá para sortear)
-export function nextOptions(l) {
-  const last = l.history[l.history.length - 1];
-  const pc = playedCount(l);
-  const order = (arr) => [...arr].sort((x, y) => pc[x] - pc[y] || l.queue.indexOf(x) - l.queue.indexOf(y));
-  const justOut = !last ? [] : (l.stay != null ? [last.a === l.stay ? last.b : last.a] : [last.a, last.b]);
-  const waiting = l.queue.filter(i => !justOut.includes(i) && i !== l.stay);
-  let fixed, pool;
-  if (l.stay != null) { fixed = l.stay; pool = waiting.length ? waiting : l.queue.filter(i => i !== l.stay); }
-  else if (waiting.length >= 2) { const w = order(waiting); fixed = w[0]; pool = w.slice(1); }
-  else if (waiting.length === 1) { fixed = waiting[0]; pool = order(l.queue.filter(i => i !== fixed)); }
-  else { const q = order(l.queue); fixed = q[0]; pool = q.slice(1); }
-  pool = order(pool);
-  const min = pool.length ? pc[pool[0]] : 0;
-  const tied = pool.filter(i => pc[i] === min);
-  return { fixed, pool, sugg: pool[0], tied, pc };
+// Sugestão do próximo confronto (a comissão pode trocar à vontade): [time A, time B]
+export function nextPair(l) {
+  if (!l.history.length) return [0, 1];
+  const waiting = l.queue.filter(i => i !== l.stay);
+  if (l.stay != null) return [l.stay, waiting[0]];
+  return [waiting[0], waiting[1]];
 }
 
-export function nextPair(l) { const o = nextOptions(l); return [o.fixed, o.sugg]; }
-
-// Próxima partida. opp: adversário escolhido (opcional).
-// Goleiros: quem estava no gol do time que ficou continua com ele; o outro vai para o time que entra.
-export function nextMatch(l, opp) {
-  let [a, b] = nextPair(l);
-  if (opp != null && opp !== a) b = opp;
+// Começa a partida entre os times a e b
+// Goleiros: quem estava no gol de um time continua com ele; os outros vão para quem entra.
+export function startMatch(l, a, b) {
+  // o vencedor que não for escalado agora volta para a frente da fila
+  if (l.stay != null && l.stay !== a && l.stay !== b && !l.queue.includes(l.stay)) l.queue.unshift(l.stay);
   l.queue = l.queue.filter(i => i !== a && i !== b);
   const prev = l.lastGk || {};
   const gks = l.gks || [];
@@ -137,22 +121,26 @@ export function nextMatch(l, opp) {
   if (!gkA) gkA = free.shift() || null;
   if (!gkB) gkB = free.shift() || null;
   if (gkA && gkA === gkB) gkB = free.shift() || null;
-  l.match = newMatch(a, b, l.history.length + 1, gkA, gkB);
+  l.match = newMatch(a, b, l.history.length + 1, gkA, gkB, { [a]: defaultLineup(l, a), [b]: defaultLineup(l, b) });
   l.stay = null;
   return l.match;
 }
+export function nextMatch(l, opp) { const [a, b] = nextPair(l); return startMatch(l, a, opp != null && opp !== a ? opp : b); }
 
 // Soma a noite inteira em estatísticas por atleta (formato das rodadas do app)
 export function nightEntries(l, posOf) {
   const E = {};
   const get = pid => E[pid] || (E[pid] = { p: 1 });
   const inc = (pid, f, v = 1) => { const e = get(pid); e[f] = (e[f] || 0) + v; };
-  l.teams.forEach(t => t.ids.forEach(get));
+  // presença: quem entrou em campo em alguma partida (ou o elenco, em noites sem escalação registrada)
+  const hasLineups = l.history.some(h => h.lineups);
+  if (hasLineups) l.history.forEach(h => Object.values(h.lineups || {}).forEach(ids => ids.forEach(get)));
+  else l.teams.forEach(t => t.ids.forEach(get));
   (l.gks || []).forEach(get);
   const wins = l.teams.map(() => 0);
   l.history.forEach(h => {
     const res = (ti, gf, gc, gk) => {
-      l.teams[ti].ids.forEach(pid => {
+      ((h.lineups && h.lineups[ti]) || l.teams[ti].ids).forEach(pid => {
         if (posOf(pid) === 'G') { if (!gk) { inc(pid, 'mj'); inc(pid, 'gc', gc); if (gc === 0) inc(pid, 'cs'); } return; }
         inc(pid, gf > gc ? 'w' : gf === gc ? 'd' : 'l');
       });
@@ -170,7 +158,7 @@ export function nightEntries(l, posOf) {
   });
   // título: primeiro da classificação (pontos, saldo, gols feitos)
   const st = standings(l), top = st[0];
-  if (top && top.pts > 0) st.filter(t => t.pts === top.pts && t.sg === top.sg && t.gf === top.gf).forEach(t => l.teams[t.i].ids.forEach(pid => { if (posOf(pid) !== 'G') inc(pid, 't'); }));
+  if (top && top.pts > 0) st.filter(t => t.pts === top.pts && t.sg === top.sg && t.gf === top.gf).forEach(t => l.teams[t.i].ids.forEach(pid => { if (posOf(pid) !== 'G' && E[pid]) inc(pid, 't'); }));
   // limpa zeros (menos gols sofridos de goleiro que jogou)
   Object.values(E).forEach(e => Object.keys(e).forEach(k => { if (!e[k] && !(k === 'gc' && e.mj)) delete e[k]; }));
   Object.values(E).forEach(e => { e.p = 1; });
