@@ -17,16 +17,21 @@ let publisher = null;
 export function setPublisher(fn) { publisher = fn; }
 
 export function loadLive() { try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; } }
+// Rodada de teste (l.test): fica só neste celular. Não é publicada para a galera, não troca a rodada
+// ao vivo/encerrada que está no banco e, ao encerrar, não vai para as estatísticas.
 export function saveLive(l) {
+  const prev = loadLive();
   try { if (l) localStorage.setItem(LS, JSON.stringify(l)); else localStorage.removeItem(LS); } catch (e) {}
+  if (l ? l.test : prev?.test) return;
   try { publisher?.(l); } catch (e) {}
 }
 
 // teams: [{ name, ids }]; gks: ids dos goleiros soltos
-export function newNight(teams, date, gks = []) {
+export function newNight(teams, date, gks = [], opts = {}) {
   const l = {
     id: 'n-' + Date.now().toString(36),
-    date, teams: teams.map((t, i) => ({ name: t.name || ['Time A', 'Time B', 'Time C', 'Time D'][i], ids: [...t.ids] })),
+    test: !!opts.test,
+    date, teams: teams.map((t, i) => ({ name: t.name || ['Time A', 'Time B', 'Time C', 'Time D'][i], ids: [...t.ids], cap: t.cap && t.ids.includes(t.cap) ? t.cap : null })),
     gks: [...gks],
     queue: teams.map((_, i) => i), // ordem sugerida
     match: null,

@@ -373,26 +373,93 @@ class Store {
     this._persistLocal(); this._emit(); return 'ok';
   }
 
-  // ---------- rounds (id = data AAAA-MM-DD) ----------
-  async saveRound(r, previousId) {
+  // ---------- rounds ----------
+  // Rodada normal: o id é SEMPRE a data oficial (AAAA-MM-DD), nunca o dia em que foi lançada.
+  // Resumo do mês: id "resumo-AAAA-MM".
+  roundIdOf(r) { return r.summary ? (r.id || 'resumo-' + String(r.date).slice(0, 7)) : r.date; }
+
+  // Cópias de segurança: antes de sobrescrever ou apagar uma rodada, guarda a versão anterior.
+  // Na nuvem ficam em settings/bkp-… (a coleção "rounds" não é tocada, então não entram nas contas).
+  _bkpDoc(r, reason) {
+    const { id, ...rest } = r;
+    return { kind: 'round-bkp', roundId: id, date: r.date || '', summary: !!r.summary, reason, at: Date.now(), by: this.user?.name || '', json: JSON.stringify(rest) };
+  }
+  async _archiveRounds(list, reason) {
+    list = (list || []).filter(r => r && r.id);
+    if (!list.length) return;
+    if (this.mode === 'cloud') {
+      const { db, fsM } = this.fb;
+      try {
+        for (let i = 0; i < list.length; i += 25) {
+          const batch = fsM.writeBatch(db);
+          list.slice(i, i + 25).forEach((r, k) => batch.set(fsM.doc(db, 'settings', `bkp-${r.id}-${Date.now().toString(36)}${i + k}`), this._bkpDoc(r, reason)));
+          await this._cloudWrite(batch.commit());
+        }
+      } catch (e) { console.warn('Não guardei a cópia de segurança', e); }
+      return;
+    }
+    try {
+      const all = JSON.parse(localStorage.getItem('capelota:round-bkp') || '[]');
+      list.forEach((r, k) => all.push({ ...this._bkpDoc(r, reason), id: `bkp-${r.id}-${Date.now().toString(36)}${k}` }));
+      localStorage.setItem('capelota:round-bkp', JSON.stringify(all.slice(-80)));
+    } catch (e) { console.warn(e); }
+  }
+  async listRoundBackups() {
+    this._requireMaster();
+    if (this.mode === 'cloud') {
+      const { db, fsM } = this.fb;
+      const snap = await fsM.getDocs(fsM.query(fsM.collection(db, 'settings'), fsM.where('kind', '==', 'round-bkp')));
+      return snap.docs.map(d => ({ ...d.data(), id: d.id })).sort((a, b) => b.at - a.at);
+    }
+    try { return JSON.parse(localStorage.getItem('capelota:round-bkp') || '[]').sort((a, b) => b.at - a.at); } catch (e) { return []; }
+  }
+  // Traz de volta uma cópia guardada (a versão atual daquela data também vira cópia antes)
+  async restoreRoundBackup(b) {
+    this._requireMaster();
+    const r = { ...JSON.parse(b.json), id: b.roundId };
+    return this.saveRound(r, null, 'restaurada');
+  }
+
+  async saveRound(r, previousId, reason = 'edição') {
     this._requireMaster();
     await this._ensureBase();
-    const data = { ...r, id: r.id || r.date, updatedAt: Date.now(), updatedBy: this.user?.name || '' };
+    const id = this.roundIdOf(r);
+    const data = { ...r, id, updatedAt: Date.now(), updatedBy: this.user?.name || '' };
+    const prev = previousId && previousId !== id ? this.rounds.find(x => x.id === previousId) : null;
+    await this._archiveRounds([this.rounds.find(x => x.id === id), prev], reason);
     if (this.mode === 'cloud') {
-      const { db, fsM } = this.fb; const { id, ...rest } = data;
+      const { db, fsM } = this.fb; const { id: _i, ...rest } = data;
+      const w = await this._cloudWrite(fsM.setDoc(fsM.doc(db, 'rounds', id), rest));
+      // só apaga o id antigo depois de gravar o novo
       if (previousId && previousId !== id) await this._cloudWrite(fsM.deleteDoc(fsM.doc(db, 'rounds', previousId)));
-      return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'rounds', id), rest));
+      return w;
     }
-    this.rounds = this.rounds.filter(x => x.id !== data.id && x.id !== previousId);
+    this.rounds = this.rounds.filter(x => x.id !== id && x.id !== previousId);
     this.rounds.push(data);
     this._persistLocal(); this._emit(); return 'ok';
   }
   async deleteRound(id) {
     this._requireMaster();
     await this._ensureBase();
+    await this._archiveRounds([this.rounds.find(x => x.id === id)], 'apagada');
     if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.deleteDoc(fsM.doc(db, 'rounds', id))); }
     this.rounds = this.rounds.filter(x => x.id !== id);
     this._persistLocal(); this._emit(); return 'ok';
+  }
+
+  // Rodadas normais cujo id não bate com a data (ex.: id 2026-11-10 com data 2026-11-03)
+  get misplacedRounds() { return this.rounds.filter(r => !r.summary && r.date && r.id !== r.date); }
+  // Passa cada uma para o id certo (a data). Se já existe outra rodada nessa data, não mexe e avisa.
+  async fixRoundIds() {
+    this._requireMaster();
+    const fixed = [], skipped = [];
+    for (const r of this.misplacedRounds) {
+      if (this.rounds.some(x => x.id === r.date)) { skipped.push(r); continue; }
+      const { id, ...rest } = r;
+      await this.saveRound(rest, id, 'id corrigido');
+      fixed.push(r);
+    }
+    return { fixed, skipped };
   }
 
   // ---------- settings ----------
@@ -471,6 +538,11 @@ class Store {
     const players = data.players.filter(p => p && p.id && p.name);
     const rounds = data.rounds.filter(r => r && r.date).map(r => ({ ...r, id: r.id || r.date }));
     const settings = normSettings(data.settings);
+    // guarda as rodadas que o backup vai apagar ou trocar
+    const incoming = new Map(rounds.map(r => [r.id, r]));
+    const canon = v => Array.isArray(v) ? '[' + v.map(canon).join(',') + ']' : v && typeof v === 'object' ? '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}' : JSON.stringify(v ?? null);
+    const strip = r => { const { id, updatedAt, updatedBy, ...x } = r || {}; return canon(x); };
+    await this._archiveRounds(this.rounds.filter(r => !incoming.has(r.id) || strip(incoming.get(r.id)) !== strip(r)), 'backup restaurado');
     if (this.mode === 'cloud') {
       const { db, fsM } = this.fb;
       const ops = [];
@@ -531,6 +603,7 @@ Store.prototype.importSheet = async function (data, plan) {
   plan = plan || this.planSheet(data);
   const { rounds, months } = plan;
   const dropRounds = this.rounds.filter(r => months.has(r.date.slice(0, 7)));
+  await this._archiveRounds(dropRounds, 'planilha importada');
   if (this.mode === 'cloud') {
     const { db, fsM } = this.fb;
     const ops = [];

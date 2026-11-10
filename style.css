@@ -751,3 +751,36 @@ button.cx-card.in b { color: #3ccf8e; }
 .lv-score .tm .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lv-score .gk-btn { font-size: 11.5px; padding: 4px 7px; }
 .st-row.top5 { grid-template-columns: 18px 32px minmax(0,1fr) auto; color: inherit; } .st-row.top5 .num { font-weight: 800; color: var(--texto-3); } .st-row.top5 .line { white-space: nowrap; }
+
+/* ---------- v52: capitão, montar times, modo teste ---------- */
+.cap { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 18px; height: 18px; border-radius: 50%; margin: 0 6px; background: var(--amarelo); color: var(--noite); font: 900 12px/1 var(--fd); box-shadow: 0 0 0 1.5px var(--noite); vertical-align: middle; }
+.team li .cap { margin-left: 4px; }
+.st-row .nm .cap { margin: 0 0 0 6px; }
+.btn .cap { margin: 0 6px 0 0; }
+.cap.on-av { position: absolute; top: 4px; right: 4px; margin: 0; z-index: 1; }
+.mt-pick { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
+.mt-pk { padding: 8px 4px; }
+.mt-pk.in { border-color: color-mix(in srgb, var(--couro) 30%, var(--risca)); }
+.mt-pk.sel { border-color: var(--amarelo); box-shadow: 0 0 0 2px var(--amarelo); background: color-mix(in srgb, var(--amarelo) 12%, var(--vest)); }
+.mt-bar {
+  position: sticky; bottom: 0; z-index: 3; margin: 12px -18px 0; padding: 12px 18px 14px;
+  background: var(--vest-2, #17223a); border-top: 1px solid var(--risca); border-radius: 18px 18px 0 0;
+  box-shadow: 0 -12px 28px rgba(0,0,0,.45); animation: up .18s ease both;
+}
+.mt-who { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.mt-who b { font-size: 16px; }
+.mt-who .muted { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-x { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--risca); background: var(--vest); color: var(--texto); flex: none; }
+.mt-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 8px; }
+.mt-team { min-height: 56px; border-radius: 12px; border: 2px solid transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; font-weight: 700; }
+.mt-team b { font-size: 13.5px; line-height: 1.1; overflow-wrap: anywhere; }
+.mt-team small { font-size: 11.5px; opacity: .85; }
+.mt-team.on { border-color: var(--texto); box-shadow: 0 0 0 2px var(--noite) inset; }
+.mt-team:active { transform: scale(.96); }
+.mt-acts { display: flex; gap: 8px; margin-top: 10px; }
+.mt-acts .btn { flex: 1; }
+.check-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 12px; border: 1px solid var(--risca); background: var(--noite); margin-top: 6px; cursor: pointer; }
+.check-row input { width: 22px; height: 22px; margin-top: 2px; flex: none; accent-color: var(--sombrero); }
+.check-row small { display: block; color: var(--texto-3); font-size: 13px; margin-top: 2px; }
+.test-bar { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-bottom: 12px; border-radius: 12px; border: 1px dashed var(--amarelo); background: color-mix(in srgb, var(--amarelo) 10%, var(--vest)); font-size: 14px; }
+.pk[hidden] { display: none; }
