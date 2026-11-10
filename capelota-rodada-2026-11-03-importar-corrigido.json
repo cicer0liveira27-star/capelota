@@ -1,0 +1,271 @@
+{
+  "players": [
+    {
+      "id": "pl-rato",
+      "name": "Rato"
+    },
+    {
+      "id": "pl-ruann",
+      "name": "Ruann"
+    },
+    {
+      "id": "pl-cicero",
+      "name": "Cícero"
+    },
+    {
+      "id": "pl-diegol",
+      "name": "Diego L"
+    },
+    {
+      "id": "pl-paulinho-santa",
+      "name": "Paulinho"
+    },
+    {
+      "id": "pl-flash",
+      "name": "Flash"
+    },
+    {
+      "id": "pl-danilo",
+      "name": "Danilo"
+    },
+    {
+      "id": "pl-matheus-carvalho",
+      "name": "Matheus Carvalho"
+    },
+    {
+      "id": "pl-kaua",
+      "name": "Kauã"
+    },
+    {
+      "id": "pl-vitor-pele",
+      "name": "Vítor Pelé"
+    },
+    {
+      "id": "pl-victor-gabriel",
+      "name": "VG"
+    },
+    {
+      "id": "pl-diego-antony",
+      "name": "Antony"
+    },
+    {
+      "id": "pl-matheus-barb",
+      "name": "Matheus B"
+    },
+    {
+      "id": "pl-barbosa",
+      "name": "T. Barbosa"
+    },
+    {
+      "id": "pl-tulio-almdeida",
+      "name": "Túlio"
+    },
+    {
+      "id": "pl-edvaldo",
+      "name": "ED"
+    },
+    {
+      "id": "pl-henrique",
+      "name": "Henrique"
+    },
+    {
+      "id": "mw13yy5k8p863",
+      "name": "Edson"
+    },
+    {
+      "id": "pl-peu",
+      "name": "Peu"
+    },
+    {
+      "id": "pl-thiago-nunes",
+      "name": "T. Nunes"
+    }
+  ],
+  "rounds": [
+    {
+      "date": "2026-11-03",
+      "entries": {
+        "pl-rato": {
+          "p": 1,
+          "g": 9,
+          "a": 0,
+          "w": 4,
+          "d": 3,
+          "l": 0,
+          "t": 0
+        },
+        "pl-ruann": {
+          "p": 1,
+          "g": 0,
+          "a": 2,
+          "w": 4,
+          "d": 3,
+          "l": 0,
+          "t": 0
+        },
+        "pl-cicero": {
+          "p": 1,
+          "g": 1,
+          "a": 1,
+          "w": 4,
+          "d": 3,
+          "l": 0,
+          "t": 0
+        },
+        "pl-diegol": {
+          "p": 1,
+          "g": 0,
+          "a": 1,
+          "w": 4,
+          "d": 3,
+          "l": 0,
+          "t": 0
+        },
+        "pl-paulinho-santa": {
+          "p": 1,
+          "g": 0,
+          "a": 1,
+          "w": 4,
+          "d": 3,
+          "l": 0,
+          "t": 0
+        },
+        "pl-flash": {
+          "p": 1,
+          "g": 3,
+          "a": 2,
+          "w": 2,
+          "d": 4,
+          "l": 0,
+          "t": 0
+        },
+        "pl-danilo": {
+          "p": 1,
+          "g": 0,
+          "a": 1,
+          "w": 2,
+          "d": 4,
+          "l": 0,
+          "t": 0
+        },
+        "pl-matheus-carvalho": {
+          "p": 1,
+          "g": 1,
+          "a": 2,
+          "w": 2,
+          "d": 4,
+          "l": 0,
+          "t": 0
+        },
+        "pl-kaua": {
+          "p": 1,
+          "g": 2,
+          "a": 0,
+          "w": 2,
+          "d": 4,
+          "l": 0,
+          "t": 0
+        },
+        "pl-vitor-pele": {
+          "p": 1,
+          "g": 0,
+          "a": 0,
+          "w": 2,
+          "d": 4,
+          "l": 0,
+          "t": 0
+        },
+        "pl-victor-gabriel": {
+          "p": 1,
+          "g": 1,
+          "a": 2,
+          "w": 3,
+          "d": 3,
+          "l": 0,
+          "t": 0
+        },
+        "pl-diego-antony": {
+          "p": 1,
+          "g": 0,
+          "a": 2,
+          "w": 3,
+          "d": 3,
+          "l": 0,
+          "t": 0
+        },
+        "pl-matheus-barb": {
+          "p": 1,
+          "g": 0,
+          "a": 1,
+          "w": 3,
+          "d": 3,
+          "l": 0,
+          "t": 0
+        },
+        "pl-barbosa": {
+          "p": 1,
+          "g": 1,
+          "a": 0,
+          "w": 3,
+          "d": 3,
+          "l": 0,
+          "t": 0
+        },
+        "pl-tulio-almdeida": {
+          "p": 1,
+          "g": 0,
+          "a": 0,
+          "w": 3,
+          "d": 3,
+          "l": 0,
+          "t": 0
+        },
+        "pl-edvaldo": {
+          "p": 1,
+          "g": 2,
+          "a": 0,
+          "w": 4,
+          "d": 2,
+          "l": 1,
+          "t": 1
+        },
+        "pl-henrique": {
+          "p": 1,
+          "g": 2,
+          "a": 3,
+          "w": 4,
+          "d": 2,
+          "l": 1,
+          "t": 1
+        },
+        "mw13yy5k8p863": {
+          "p": 1,
+          "g": 1,
+          "a": 0,
+          "w": 4,
+          "d": 2,
+          "l": 1,
+          "t": 1
+        },
+        "pl-peu": {
+          "p": 1,
+          "g": 2,
+          "a": 0,
+          "w": 4,
+          "d": 2,
+          "l": 1,
+          "t": 1
+        },
+        "pl-thiago-nunes": {
+          "p": 1,
+          "g": 0,
+          "a": 0,
+          "w": 4,
+          "d": 2,
+          "l": 1,
+          "t": 1
+        }
+      }
+    }
+  ]
+}
