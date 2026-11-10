@@ -37,12 +37,13 @@ export function emptyMonth(prices) {
 
 // Junta o que está salvo com quem deveria pagar no mês
 // players: lista do app; rounds: rodadas; doc: caixa do mês salvo (ou null)
-// Quantas peladas teve no mês (rodadas lançadas ou o resumo da planilha)
+// Quantas peladas teve no mês: as do resumo do mês somadas às rodadas lançadas depois dele
+// (ex.: novembro = resumo com a de 03/11 + a rodada de 10/11)
 export function peladasNoMes(rounds, key) {
   const list = rounds.filter(r => r.date.slice(0, 7) === key);
   const real = list.filter(r => !r.summary).length;
   const sum = list.filter(r => r.summary).reduce((a, r) => a + (+r.rounds || 0), 0);
-  return Math.max(real, sum);
+  return real + sum;
 }
 
 export function monthView(players, rounds, y, m, doc, cfg) {
