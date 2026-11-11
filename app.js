@@ -1303,8 +1303,8 @@ function openLiveViewer() {
   if (done && !liveOn()) {
     const r = store.rounds.find(x => x.date === done.date && !x.summary);
     openSheet(`<div id="lvDone"></div><div class="lv-viewer-top"><span class="live paused">RODADA ENCERRADA</span><span class="muted small">${C.fmtDate(done.date, { year: false })}</span></div>
-      <div class="lbl-sm">Classificação final</div>${liveTableHTML(done)}
-      ${done.history?.length ? `<div class="lbl-sm" style="margin-top:12px">Partidas da noite</div>${liveHistHTML(done)}` : ''}
+      <div class="lbl-sm">Classificação final</div>${liveTableHTML(r?.matches?.length && r.teams?.length ? { teams: r.teams, history: r.matches } : done)}
+      ${r?.matches?.length && r.teams?.length ? roundMatchesHTML(r) : done.history?.length ? `<div class="lbl-sm" style="margin-top:12px">Partidas da noite</div>${liveHistHTML(done)}` : ''}
       ${r ? roundBestHTML(r) : ''}
       ${r ? `<a class="btn primary block" style="margin-top:14px" href="#/rodada/${esc(r.id)}" data-act="sheet-close-go">Ver a rodada completa</a>` : ''}`);
     sheetRoot.querySelector('.sheet')?.classList.add('lv-sheet');
@@ -1946,7 +1946,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 56.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 57.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -3046,11 +3046,14 @@ const actions = {
   'bkp-list': () => roundBackupsSheet(),
   'match-fix': async el => {
     const r = roundById(el.dataset.r), k = +el.dataset.k; if (!r?.matches?.[k]) return;
+    const fromDone = !!document.getElementById('lvDone');
     const m = r.matches[k];
     const pick = await matchTeamsSheet({ title: `Corrigir a ${k + 1}ª partida`, teams: r.teams, a: m.a, b: m.b, ga: m.ga, gb: m.gb, hint: 'Escolha quem jogou de cada lado. O placar e os gols de cada atleta continuam iguais; vitórias, empates, derrotas e o campeão da noite são recalculados.' });
     if (!pick) return;
+    const reopen = fromDone;
     try { await store.saveRound(fixRoundMatch(r, k, pick.a, pick.b), null, 'partida corrigida'); toast(`${k + 1}ª partida corrigida`); }
     catch (e) { toast(e.message, true); }
+    if (reopen) openLiveViewer();
   },
   'live-swap': async () => {
     const l = L.loadLive(); const m = l?.match; if (!m) return;
