@@ -186,6 +186,12 @@ class Store {
       try { this.live = d?.json ? { ...JSON.parse(d.json), _at: d.at, _by: d.by } : null; } catch (e) { this.live = null; }
       this._emit();
     }, err => console.error(err));
+    // correções de partidas feitas por outro master; o celular que conta aplica e republica
+    fsM.onSnapshot(fsM.doc(db, 'settings', 'live-fix'), snap => {
+      const d = snap.exists() ? snap.data() : null;
+      try { this.liveFix = d?.json ? { night: d.night, list: JSON.parse(d.json) } : null; } catch (e) { this.liveFix = null; }
+      this._emit();
+    }, err => console.error(err));
     fsM.onSnapshot(fsM.doc(db, 'settings', 'draw'), snap => {
       this.draw = snap.exists() ? snap.data() : null; this._emit();
     }, err => console.error(err));
@@ -505,6 +511,15 @@ class Store {
     const data = { json: l ? JSON.stringify(l) : null, at: Date.now(), by: this.user?.name || '' };
     if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'settings', 'live'), data)); }
     this.live = l ? { ...l, _at: data.at, _by: data.by } : null; this._emit(); return 'ok';
+  }
+
+  // Pede uma correção de partida para a noite ao vivo que outro celular está contando
+  async saveLiveFix(night, fix) {
+    this._requireMaster();
+    const cur = this.liveFix?.night === night ? this.liveFix.list : [];
+    const list = cur.concat({ ...fix, id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: Date.now(), by: this.user?.name || '' });
+    if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'settings', 'live-fix'), { night, json: JSON.stringify(list) })); }
+    this.liveFix = { night, list }; this._emit(); return 'ok';
   }
 
   // ---------- sorteio publicado ----------

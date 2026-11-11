@@ -228,8 +228,25 @@ function firstData() {
   }
 }
 
+// Celular que conta: aplica correções de partidas pedidas por outro master e republica a noite
+function applyLiveFixes() {
+  const l = L.loadLive(), f = store.liveFix;
+  if (!l || !f || f.night !== l.id || !store.isMaster) return;
+  const done = new Set(l.fixesApplied || []);
+  const todo = f.list.filter(x => !done.has(x.id));
+  if (!todo.length) return;
+  todo.forEach(x => {
+    const h = l.history[x.k];
+    if (h && h.n === x.n && x.a !== x.b && l.teams[x.a] && l.teams[x.b]) { fixLiveMatch(l, x.k, x.a, x.b); toast(`${x.by || 'Comissão'} corrigiu a ${h.n}ª partida`); }
+    done.add(x.id);
+  });
+  l.fixesApplied = [...done];
+  L.saveLive(l);
+}
+
 store.subscribe(() => {
   firstData();
+  applyLiveFixes();
   const r = route();
   // não redesenha o editor enquanto alguém está lançando a rodada
   if (r.name === 'lancar' && state.editor) {
@@ -1276,7 +1293,7 @@ function liveViewHTML(l) {
   return `${top}
     ${liveLeadersHTML(l)}
     <div class="lbl-sm" style="margin-top:14px">Classificação da noite</div>${liveTableHTML(l)}
-    ${l.history.length ? `<div class="lbl-sm" style="margin-top:12px">Partidas</div>${liveHistHTML(l)}` : ''}
+    ${l.history.length ? `<div class="lbl-sm" style="margin-top:12px">Partidas</div>${liveHistHTML(l, store.isMaster)}` : ''}
     <div class="lbl-sm" style="margin-top:12px">Times</div>
     <div class="lv-rosters">${l.teams.map((t, i) => `<div><b>${tDot(i)}${tName(l, i)}</b><small>${t.ids.map(id => esc(dn(playerById(id))) + (t.cap === id ? ' (C)' : '')).join(', ')}</small></div>`).join('')}
       ${(l.gks || []).length ? `<div><b>🧤 Goleiros</b><small>${l.gks.map(id => esc(dn(playerById(id)))).join(', ')}</small></div>` : ''}</div>`;
@@ -1929,7 +1946,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 55.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 56.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -3043,10 +3060,22 @@ const actions = {
     const l2 = L.loadLive(); L.changeMatchTeams(l2, pick.a, pick.b); L.saveLive(l2); toast('Times trocados'); render();
   },
   'live-match-fix': async el => {
-    const l = L.loadLive(), k = +el.dataset.k; const h = l?.history?.[k]; if (!h) return;
+    const k = +el.dataset.k;
+    const mine = L.loadLive();
+    const remote = liveOn();
+    // este celular conta a noite: corrige direto. Outro celular conta: manda a correção para ele.
+    const here = mine && (!remote || remote.id === mine.id);
+    const l = here ? mine : remote;
+    const h = l?.history?.[k]; if (!h) return;
+    const reopen = !!document.getElementById('lvViewer');
     const pick = await matchTeamsSheet({ title: `Corrigir a ${h.n}ª partida`, teams: l.teams, a: h.a, b: h.b, ga: h.ga, gb: h.gb, hint: 'Escolha quem jogou de cada lado. O placar e os gols continuam iguais; a tabela da noite é refeita.' });
-    if (!pick) return;
-    const l2 = L.loadLive(); fixLiveMatch(l2, k, pick.a, pick.b); L.saveLive(l2); toast(`${h.n}ª partida corrigida`); render();
+    if (!pick) { if (reopen) openLiveViewer(); return; }
+    if (here) { const l2 = L.loadLive(); fixLiveMatch(l2, k, pick.a, pick.b); L.saveLive(l2); toast(`${h.n}ª partida corrigida`); render(); }
+    else {
+      try { await store.saveLiveFix(l.id, { k, n: h.n, a: pick.a, b: pick.b }); toast(`Correção enviada. Aparece para todos assim que o celular de ${l._by || 'quem está contando'} receber.`); }
+      catch (e) { toast(e.message, true); }
+    }
+    if (reopen) openLiveViewer();
   },
   'aw-step': el => {
     let { y, m } = state.awards; m += +el.dataset.d;
