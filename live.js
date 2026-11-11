@@ -130,6 +130,20 @@ export function startMatch(l, a, b) {
   l.stay = null;
   return l.match;
 }
+// Troca os times da partida em andamento (alguém tocou no time errado). Gols e cartões seguem o lado.
+export function changeMatchTeams(l, na, nb) {
+  const m = l.match; if (!m || na === nb) return;
+  const oa = m.a, ob = m.b;
+  const map = { [oa]: na, [ob]: nb };
+  m.events.forEach(e => { if (e.team in map) e.team = map[e.team]; });
+  const lu = {};
+  [na, nb].forEach(t => { lu[t] = (t === oa || t === ob) && m.lineups?.[t] ? m.lineups[t] : defaultLineup(l, t); });
+  m.lineups = lu;
+  m.a = na; m.b = nb;
+  // quem saiu volta para a frente da fila; quem entrou sai dela
+  const out = [oa, ob].filter(t => t !== na && t !== nb);
+  l.queue = out.concat(l.queue.filter(i => i !== na && i !== nb && !out.includes(i)));
+}
 export function nextMatch(l, opp) { const [a, b] = nextPair(l); return startMatch(l, a, opp != null && opp !== a ? opp : b); }
 
 // Soma a noite inteira em estatísticas por atleta (formato das rodadas do app)

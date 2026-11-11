@@ -533,6 +533,7 @@ function vRodada(id) {
     </div>
     ${r.note ? `<p class="sec muted" style="margin-top:14px">${esc(r.note)}</p>` : ''}
     ${roundBestHTML(r)}
+    ${roundMatchesHTML(r)}
     <section class="sec">${roundSheet(r)}</section>
     ${store.isMaster ? `<div class="btn-row sec"><a class="btn primary" href="#/lancar/${r.date}">${I.edit}Editar rodada</a><button class="btn danger" data-act="round-del" data-date="${r.date}">Apagar rodada</button></div>
     ${r.updatedBy ? `<p class="hint" style="margin-top:10px">Última edição por ${esc(r.updatedBy)}.</p>` : ''}` : ''}`;
@@ -1227,8 +1228,10 @@ function liveTableHTML(l) {
     <tbody>${st.map((t, k) => `<tr class="${k === 0 && t.pts > 0 ? 'lead' : ''}"><td class="t"><span class="pos">${k + 1}</span>${tDot(t.i)}${tName(l, t.i)}</td><td>${t.j}</td><td class="pts">${t.pts}</td><td>${t.v}</td><td>${t.e}</td><td>${t.d}</td><td>${t.gf}</td><td>${t.gs}</td><td class="${t.sg > 0 ? 'pos-sg' : t.sg < 0 ? 'neg-sg' : ''}">${t.sg > 0 ? '+' : ''}${t.sg}</td></tr>`).join('')}</tbody></table>
     <p class="hint" style="margin-top:6px">Vitória 3 pontos, empate 1. Empate em pontos: vale o saldo de gols, depois gols feitos.</p>`;
 }
-function liveHistHTML(l) {
-  return l.history.slice().reverse().map(h => `<div class="ev"><span class="m">${h.n}ª</span>${tDot(h.a)}<b>${h.ga} × ${h.gb}</b>${tDot(h.b)}<span style="color:var(--t2)">${tName(l, h.a)} × ${tName(l, h.b)} · ${h.winner != null ? tName(l, h.winner) + ' venceu' : 'empate'}</span></div>`).join('');
+// Partidas já jogadas na noite. editable: só na tela de quem controla a contagem.
+function liveHistHTML(l, editable = false) {
+  const gols = h => { const c = {}; (h.events || []).filter(e => e.type === 'g' && e.pid).forEach(e => { c[e.pid] = (c[e.pid] || 0) + 1; }); return Object.entries(c).map(([id, n]) => esc(dn(playerById(id))) + (n > 1 ? ' ' + n : '')).join(', '); };
+  return l.history.map((h, k) => [h, k]).reverse().map(([h, k]) => { const g = gols(h); return `<div class="ev"><span class="m">${h.n}ª</span>${tDot(h.a)}<b>${h.ga} × ${h.gb}</b>${tDot(h.b)}<span style="color:var(--t2);flex:1">${tName(l, h.a)} × ${tName(l, h.b)} · ${h.winner != null ? tName(l, h.winner) + ' venceu' : 'empate'}${g ? `<br><small>⚽ ${g}</small>` : ''}</span>${editable ? `<button class="btn sm ghost" data-act="live-match-fix" data-k="${k}">Corrigir</button>` : ''}</div>`; }).join('');
 }
 
 // Destaques ao vivo: chuteira no artilheiro, cartola no garçom, parede com luva no goleiro menos vazado
@@ -1284,6 +1287,7 @@ function openLiveViewer() {
     const r = store.rounds.find(x => x.date === done.date && !x.summary);
     openSheet(`<div id="lvDone"></div><div class="lv-viewer-top"><span class="live paused">RODADA ENCERRADA</span><span class="muted small">${C.fmtDate(done.date, { year: false })}</span></div>
       <div class="lbl-sm">Classificação final</div>${liveTableHTML(done)}
+      ${done.history?.length ? `<div class="lbl-sm" style="margin-top:12px">Partidas da noite</div>${liveHistHTML(done)}` : ''}
       ${r ? roundBestHTML(r) : ''}
       ${r ? `<a class="btn primary block" style="margin-top:14px" href="#/rodada/${esc(r.id)}" data-act="sheet-close-go">Ver a rodada completa</a>` : ''}`);
     sheetRoot.querySelector('.sheet')?.classList.add('lv-sheet');
@@ -1320,7 +1324,7 @@ function vPartida() {
     return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Nenhuma rodada ao vivo</h3><p>No Sorteio, sorteie ou monte os times e toque em "Começar rodada ao vivo".</p><a class="btn primary" href="#/sorteio">Ir para o sorteio</a></div>`;
   }
   const table = liveTableHTML(l);
-  const hist = liveHistHTML(l);
+  const hist = liveHistHTML(l, true);
   const testBar = l.test ? `<div class="test-bar">🧪 <span><b>Rodada de teste</b> de ${C.fmtDate(l.date, { year: false })}. Fica só neste celular e não vai para as estatísticas.</span></div>` : '';
 
   if (!l.match) {
@@ -1369,6 +1373,7 @@ function vPartida() {
     <div class="lbl-sm">Lances desta partida</div>
     ${ev || '<p class="hint">Nenhum lance ainda.</p>'}
     <div class="btn-row sec"><button class="btn" data-act="live-undo" ${m.events.length ? '' : 'disabled'}>Desfazer último</button><button class="btn primary" data-act="live-end">Encerrar partida</button></div>
+    <button class="btn ghost block" style="margin-top:8px" data-act="live-swap">🔄 Trocar os times desta partida</button>
     ${liveLeadersHTML(l)}
     <section class="sec">${table}</section>`;
 }
@@ -1618,7 +1623,7 @@ async function liveFinish() {
   if (!date) return;
   if (date !== l.date) { l.date = date; L.saveLive(l); }
   try {
-    const round = { date: l.date, entries, note: `Contada ao vivo: ${l.history.length} partidas.`, teams: l.teams.map(t => ({ name: t.name, ids: t.ids, ...(t.cap ? { cap: t.cap } : {}) })), gks: l.gks || [], matches: l.history.map(h => ({ a: h.a, b: h.b, ga: h.ga, gb: h.gb, gkA: h.gkA || null, gkB: h.gkB || null })) };
+    const round = { date: l.date, entries, note: `Contada ao vivo: ${l.history.length} partidas.`, teams: l.teams.map(t => ({ name: t.name, ids: t.ids, ...(t.cap ? { cap: t.cap } : {}) })), gks: l.gks || [], matches: l.history.map(h => ({ a: h.a, b: h.b, ga: h.ga, gb: h.gb, gkA: h.gkA || null, gkB: h.gkB || null, gols: (h.events || []).filter(e => e.type === 'g').map(e => ({ s: e.team === h.a ? 0 : 1, pid: e.pid || null, ast: e.ast || null })) })) };
     const r = await store.saveRound(round, null, 'substituída ao vivo');
     L.saveLive(null); keepAwake(false);
     // avisa a galera que a rodada acabou (mostra o melhor time por 12 horas)
@@ -1924,7 +1929,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 54.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 55.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2127,6 +2132,126 @@ async function roundBackupsSheet() {
     if (!ok) return;
     try { await store.restoreRoundBackup(b); toast('Cópia restaurada'); } catch (e) { toast(e.message, true); }
   });
+}
+
+// ---------- partidas da noite ----------
+// Lista das partidas de uma rodada contada ao vivo, na ordem em que aconteceram
+function roundMatchesHTML(r) {
+  const ms = r.matches || [];
+  if (!ms.length || !r.teams?.length) return '';
+  const nm = i => esc(r.teams[i]?.name || TEAM_NAMES[i]);
+  const gk = id => { const p = id && playerById(id); return p ? esc(dn(p)) : ''; };
+  const scorers = (m, side) => {
+    const c = {}; (m.gols || []).filter(g => g.s === side && g.pid).forEach(g => { c[g.pid] = (c[g.pid] || 0) + 1; });
+    return Object.entries(c).map(([id, n]) => esc(dn(playerById(id))) + (n > 1 ? ' ' + n : '')).join(', ');
+  };
+  const rows = ms.map((m, k) => {
+    const res = m.ga > m.gb ? `${nm(m.a)} venceu` : m.gb > m.ga ? `${nm(m.b)} venceu` : 'Empate';
+    const sa = scorers(m, 0), sb = scorers(m, 1);
+    const gks = [gk(m.gkA), gk(m.gkB)];
+    return `<div class="mt-row">
+      <span class="mt-n">${k + 1}ª</span>
+      <div class="mt-main">
+        <div class="mt-line ${m.ga > m.gb ? 'win' : ''}">${tDot(m.a)}<span class="mt-t">${nm(m.a)}</span><b class="mt-sc">${m.ga}</b></div>
+        <div class="mt-line ${m.gb > m.ga ? 'win' : ''}">${tDot(m.b)}<span class="mt-t">${nm(m.b)}</span><b class="mt-sc">${m.gb}</b></div>
+        <small>${res}${gks[0] || gks[1] ? ` · no gol: ${gks[0] || '?'} e ${gks[1] || '?'}` : ''}</small>
+        ${sa || sb ? `<small>⚽ ${[sa && nm(m.a) + ': ' + sa, sb && nm(m.b) + ': ' + sb].filter(Boolean).join(' · ')}</small>` : ''}
+      </div>
+      ${store.isMaster ? `<button class="btn sm ghost" data-act="match-fix" data-r="${esc(r.id)}" data-k="${k}">Corrigir</button>` : ''}
+    </div>`;
+  }).join('');
+  return `<section class="sec"><div class="sec-head"><h2>Partidas da noite</h2><span class="muted small">${ms.length} ${ms.length === 1 ? 'partida' : 'partidas'}</span></div><div class="mt-list">${rows}</div></section>`;
+}
+
+// Resultado de cada atleta de linha numa lista de partidas (pelo elenco dos times)
+function matchResults(teams, matches) {
+  const R = {};
+  const add = (ti, gf, gc) => (teams[ti]?.ids || []).forEach(pid => {
+    if (playerById(pid)?.pos === 'G') return;
+    const k = gf > gc ? 'w' : gf === gc ? 'd' : 'l';
+    R[pid] = R[pid] || { w: 0, d: 0, l: 0 }; R[pid][k]++;
+  });
+  matches.forEach(m => { add(m.a, m.ga, m.gb); add(m.b, m.gb, m.ga); });
+  return R;
+}
+// Times campeões da noite (mesma regra do encerramento: pontos, saldo, gols feitos)
+function champTeams(teams, matches) {
+  const st = L.standings({ teams, history: matches }), top = st[0];
+  if (!top || top.pts <= 0) return new Set();
+  return new Set(st.filter(t => t.pts === top.pts && t.sg === top.sg && t.gf === top.gf).map(t => t.i));
+}
+// Troca os times de uma partida mantendo o placar de cada lado e acerta V/E/D e título dos atletas
+function fixRoundMatch(r, k, na, nb) {
+  const old = r.matches;
+  const m = old[k];
+  const neu = old.map((x, i) => i === k ? { ...x, a: na, b: nb } : x);
+  const before = matchResults(r.teams, old), after = matchResults(r.teams, neu);
+  const entries = JSON.parse(JSON.stringify(r.entries || {}));
+  const bump = (pid, f, v) => {
+    if (!v) return;
+    const e = entries[pid] || (entries[pid] = { p: 1 });
+    e[f] = Math.max(0, (e[f] || 0) + v);
+    if (!e[f]) delete e[f];
+  };
+  new Set([...Object.keys(before), ...Object.keys(after)]).forEach(pid => ['w', 'd', 'l'].forEach(f => bump(pid, f, (after[pid]?.[f] || 0) - (before[pid]?.[f] || 0))));
+  const cb = champTeams(r.teams, old), ca = champTeams(r.teams, neu);
+  r.teams.forEach((t, ti) => {
+    const d = (ca.has(ti) ? 1 : 0) - (cb.has(ti) ? 1 : 0);
+    if (d) t.ids.forEach(pid => { if (playerById(pid)?.pos !== 'G' && entries[pid]) bump(pid, 't', d); });
+  });
+  const { id, updatedAt, updatedBy, ...rest } = r;
+  return { ...rest, matches: neu, entries };
+}
+
+// Sheet para escolher os dois times de uma partida (o placar fica com o lado)
+function matchTeamsSheet({ title, teams, a, b, ga, gb, hint }) {
+  return new Promise(res => {
+    let A = a, B = b;
+    const nm = i => esc(teams[i]?.name || TEAM_NAMES[i]);
+    const txt = i => (i % 4 === 1 || i % 4 === 2) ? 'color:var(--noite)' : 'color:#fff';
+    const side = (cur, key, other) => `<div class="mt-teams">${teams.map((t, i) => `<button type="button" class="mt-team ${cur === i ? 'on' : ''}" style="background:${TEAM_COLORS[i % 4]};${txt(i)}${i === other ? ';opacity:.35' : ''}" data-side="${key}" data-t="${i}" ${i === other ? 'disabled' : ''}><b>${nm(i)}</b></button>`).join('')}</div>`;
+    const draw = s => {
+      $('#mfBody', s).innerHTML = `<div class="lbl-sm">Lado que fez ${ga} ${ga === 1 ? 'gol' : 'gols'}</div>${side(A, 'a', B)}
+        <div class="mf-score">${tDot(A)}<span>${nm(A)}</span><b>${ga} × ${gb}</b><span>${nm(B)}</span>${tDot(B)}</div>
+        <div class="lbl-sm">Lado que fez ${gb} ${gb === 1 ? 'gol' : 'gols'}</div>${side(B, 'b', A)}`;
+    };
+    openSheet(`<h2>${title}</h2><p class="muted" style="margin:-6px 0 12px">${hint}</p><div id="mfBody"></div>
+      <button class="btn primary block" style="margin-top:14px" id="mfGo">Salvar</button>
+      <button class="btn ghost block" style="margin-top:8px" id="mfNo">Cancelar</button>`, s => {
+      draw(s);
+      $('#mfBody', s).addEventListener('click', ev => {
+        const btn = ev.target.closest('[data-side]'); if (!btn || btn.disabled) return;
+        if (btn.dataset.side === 'a') A = +btn.dataset.t; else B = +btn.dataset.t;
+        draw(s);
+      });
+      $('#mfGo', s).onclick = () => { closeSheet(); res(A === a && B === b ? null : { a: A, b: B }); };
+      $('#mfNo', s).onclick = () => { closeSheet(); res(null); };
+      $('.sheet-x', sheetRoot).addEventListener('click', () => res(null), { once: true });
+      $('.sheet-bg', sheetRoot).addEventListener('click', () => res(null), { once: true });
+    });
+  });
+}
+
+// Corrige uma partida que já acabou na noite ao vivo (antes de lançar)
+function fixLiveMatch(l, k, na, nb) {
+  const h = l.history[k];
+  const map = { [h.a]: na, [h.b]: nb };
+  const lu = {};
+  if (h.lineups) { lu[na] = h.a === na || h.b === na ? h.lineups[na] || L.defaultLineup(l, na) : L.defaultLineup(l, na); lu[nb] = h.a === nb || h.b === nb ? h.lineups[nb] || L.defaultLineup(l, nb) : L.defaultLineup(l, nb); }
+  // gols e cartões seguem o lado
+  (h.events || []).forEach(e => { if (e.team in map) e.team = map[e.team]; });
+  h.a = na; h.b = nb;
+  if (h.lineups) h.lineups = lu;
+  h.winner = h.ga > h.gb ? na : h.gb > h.ga ? nb : null;
+  // foi a última partida: acerta quem fica em campo, a fila e os goleiros de cada time
+  if (k === l.history.length - 1 && !l.match) {
+    l.stay = h.winner;
+    const inMatch = [na, nb];
+    const out = h.winner != null ? inMatch.filter(t => t !== h.winner) : inMatch;
+    l.queue = l.queue.filter(i => !inMatch.includes(i)).concat(out);
+    l.teams.forEach((_, i) => { if (!inMatch.includes(i) && i !== l.stay && !l.queue.includes(i)) l.queue.push(i); });
+    l.lastGk = { [na]: h.gkA || null, [nb]: h.gkB || null };
+  }
 }
 
 // Master: escolher o que editar num mês (rodadas lançadas e/ou resumo)
@@ -2902,6 +3027,27 @@ const actions = {
     } catch (e) { toast(e.message, true); el.disabled = false; }
   },
   'bkp-list': () => roundBackupsSheet(),
+  'match-fix': async el => {
+    const r = roundById(el.dataset.r), k = +el.dataset.k; if (!r?.matches?.[k]) return;
+    const m = r.matches[k];
+    const pick = await matchTeamsSheet({ title: `Corrigir a ${k + 1}ª partida`, teams: r.teams, a: m.a, b: m.b, ga: m.ga, gb: m.gb, hint: 'Escolha quem jogou de cada lado. O placar e os gols de cada atleta continuam iguais; vitórias, empates, derrotas e o campeão da noite são recalculados.' });
+    if (!pick) return;
+    try { await store.saveRound(fixRoundMatch(r, k, pick.a, pick.b), null, 'partida corrigida'); toast(`${k + 1}ª partida corrigida`); }
+    catch (e) { toast(e.message, true); }
+  },
+  'live-swap': async () => {
+    const l = L.loadLive(); const m = l?.match; if (!m) return;
+    const [ga, gb] = L.score(m);
+    const pick = await matchTeamsSheet({ title: `Trocar times da partida ${m.n}`, teams: l.teams, a: m.a, b: m.b, ga, gb, hint: 'Tocou no time errado? Escolha quem está jogando de cada lado. Gols, cartões e o cronômetro continuam.' });
+    if (!pick) return;
+    const l2 = L.loadLive(); L.changeMatchTeams(l2, pick.a, pick.b); L.saveLive(l2); toast('Times trocados'); render();
+  },
+  'live-match-fix': async el => {
+    const l = L.loadLive(), k = +el.dataset.k; const h = l?.history?.[k]; if (!h) return;
+    const pick = await matchTeamsSheet({ title: `Corrigir a ${h.n}ª partida`, teams: l.teams, a: h.a, b: h.b, ga: h.ga, gb: h.gb, hint: 'Escolha quem jogou de cada lado. O placar e os gols continuam iguais; a tabela da noite é refeita.' });
+    if (!pick) return;
+    const l2 = L.loadLive(); fixLiveMatch(l2, k, pick.a, pick.b); L.saveLive(l2); toast(`${h.n}ª partida corrigida`); render();
+  },
   'aw-step': el => {
     let { y, m } = state.awards; m += +el.dataset.d;
     if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }

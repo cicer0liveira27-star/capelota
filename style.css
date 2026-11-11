@@ -784,3 +784,24 @@ button.cx-card.in b { color: #3ccf8e; }
 .check-row small { display: block; color: var(--texto-3); font-size: 13px; margin-top: 2px; }
 .test-bar { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-bottom: 12px; border-radius: 12px; border: 1px dashed var(--amarelo); background: color-mix(in srgb, var(--amarelo) 10%, var(--vest)); font-size: 14px; }
 .pk[hidden] { display: none; }
+
+/* ---------- v55: partidas da noite ---------- */
+.mt-list { display: grid; gap: 8px; }
+.mt-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--risca); background: var(--vest); }
+.mt-n { font: 900 15px/1 var(--fd); color: var(--texto-3); width: 26px; flex: none; }
+.mt-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.mt-main small { color: var(--texto-3); font-size: 12.5px; }
+.mt-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mt-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700; font-size: 14px; }
+.mt-t.r { text-align: right; }
+.mt-sc { flex: none; font: 900 17px/1 var(--fd); padding: 0 4px; }
+.mf-score { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 0; font-weight: 700; }
+.mf-score b { font: 900 22px/1 var(--fd); padding: 0 6px; }
+.lbl-sm + .mt-teams { margin-top: 6px; }
+.mt-line .mt-t { font-weight: 600; color: var(--texto-2, #c9cfdc); }
+.mt-line.win .mt-t, .mt-line.win .mt-sc { color: var(--texto); font-weight: 800; }
+.mt-line .mt-sc { margin-left: auto; color: var(--texto-3); }
+.mt-main small:first-of-type { margin-top: 2px; }
+.mf-score b { white-space: nowrap; }
+.mf-score span { flex: 1; min-width: 0; }
+.mf-score span:last-of-type { text-align: right; }
