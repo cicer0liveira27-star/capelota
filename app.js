@@ -1946,7 +1946,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 57.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 58.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2156,13 +2156,21 @@ async function roundBackupsSheet() {
 function roundMatchesHTML(r) {
   const ms = r.matches || [];
   if (!ms.length || !r.teams?.length) return '';
+  const ed = store.isMaster && state.matchEdit?.rid === r.id ? state.matchEdit : null;
   const nm = i => esc(r.teams[i]?.name || TEAM_NAMES[i]);
   const gk = id => { const p = id && playerById(id); return p ? esc(dn(p)) : ''; };
   const scorers = (m, side) => {
     const c = {}; (m.gols || []).filter(g => g.s === side && g.pid).forEach(g => { c[g.pid] = (c[g.pid] || 0) + 1; });
     return Object.entries(c).map(([id, n]) => esc(dn(playerById(id))) + (n > 1 ? ' ' + n : '')).join(', ');
   };
-  const rows = ms.map((m, k) => {
+  const sel = (k, side, cur, other) => `<select class="input mt-sel" data-input="mt-edit" data-k="${k}" data-side="${side}" aria-label="Time do lado ${side === 'a' ? 'esquerdo' : 'direito'}">${r.teams.map((t, i) => `<option value="${i}" ${i === cur ? 'selected' : ''} ${i === other ? 'disabled' : ''}>${nm(i)}</option>`).join('')}</select>`;
+  const rows = ms.map((m0, k) => {
+    const m = ed ? { ...m0, ...ed.draft[k] } : m0;
+    const changed = ed && (m.a !== m0.a || m.b !== m0.b);
+    if (ed) return `<div class="mt-row ${changed ? 'chg' : ''}"><span class="mt-n">${k + 1}ª</span><div class="mt-main">
+        <div class="mt-line">${tDot(m.a)}${sel(k, 'a', m.a, m.b)}<b class="mt-sc">${m.ga}</b></div>
+        <div class="mt-line">${tDot(m.b)}${sel(k, 'b', m.b, m.a)}<b class="mt-sc">${m.gb}</b></div>
+        ${changed ? `<small>Antes: ${nm(m0.a)} ${m0.ga} × ${m0.gb} ${nm(m0.b)}</small>` : ''}</div></div>`;
     const res = m.ga > m.gb ? `${nm(m.a)} venceu` : m.gb > m.ga ? `${nm(m.b)} venceu` : 'Empate';
     const sa = scorers(m, 0), sb = scorers(m, 1);
     const gks = [gk(m.gkA), gk(m.gkB)];
@@ -2174,10 +2182,20 @@ function roundMatchesHTML(r) {
         <small>${res}${gks[0] || gks[1] ? ` · no gol: ${gks[0] || '?'} e ${gks[1] || '?'}` : ''}</small>
         ${sa || sb ? `<small>⚽ ${[sa && nm(m.a) + ': ' + sa, sb && nm(m.b) + ': ' + sb].filter(Boolean).join(' · ')}</small>` : ''}
       </div>
-      ${store.isMaster ? `<button class="btn sm ghost" data-act="match-fix" data-r="${esc(r.id)}" data-k="${k}">Corrigir</button>` : ''}
     </div>`;
   }).join('');
-  return `<section class="sec"><div class="sec-head"><h2>Partidas da noite</h2><span class="muted small">${ms.length} ${ms.length === 1 ? 'partida' : 'partidas'}</span></div><div class="mt-list">${rows}</div></section>`;
+  const nChg = ed ? ms.filter((m0, k) => ed.draft[k].a !== m0.a || ed.draft[k].b !== m0.b).length : 0;
+  const head = `<div class="sec-head"><h2>Partidas da noite</h2>${store.isMaster && !ed ? `<button class="btn sm" data-act="mt-edit-on" data-r="${esc(r.id)}">✏ Editar partidas</button>` : `<span class="muted small">${ms.length} ${ms.length === 1 ? 'partida' : 'partidas'}</span>`}</div>`;
+  const tip = ed ? `<p class="hint" style="margin-bottom:10px">Escolha quem jogou de cada lado. O placar e os gols de cada atleta ficam iguais; vitórias, empates, derrotas e o campeão da noite são refeitos ao salvar.</p>` : '';
+  const foot = ed ? `<div class="mt-save"><button class="btn ghost" data-act="mt-edit-off">Cancelar</button><button class="btn primary" data-act="mt-edit-save" ${nChg ? '' : 'disabled'}>Salvar${nChg ? ` (${nChg} ${nChg === 1 ? 'partida' : 'partidas'})` : ''}</button></div>` : '';
+  return `<section class="sec" id="mtSec">${head}${tip}<div class="mt-list">${rows}</div>${foot}</section>`;
+}
+// redesenha a lista de partidas onde ela estiver (página da rodada ou janela de rodada encerrada)
+function redrawMatches(full = false, rid = state.matchEdit?.rid) {
+  const sec = document.getElementById('mtSec'), r = rid && roundById(rid);
+  if (!full && sec && r) { sec.outerHTML = roundMatchesHTML(r); return; }
+  if (document.getElementById('lvDone')) { const box = sheetRoot.querySelector('.sheet'); const t = box?.scrollTop || 0; openLiveViewer(); const nb = sheetRoot.querySelector('.sheet'); if (nb) nb.scrollTop = t; return; }
+  const y = window.scrollY; render(); window.scrollTo(0, y);
 }
 
 // Resultado de cada atleta de linha numa lista de partidas (pelo elenco dos times)
@@ -3044,16 +3062,20 @@ const actions = {
     } catch (e) { toast(e.message, true); el.disabled = false; }
   },
   'bkp-list': () => roundBackupsSheet(),
-  'match-fix': async el => {
-    const r = roundById(el.dataset.r), k = +el.dataset.k; if (!r?.matches?.[k]) return;
-    const fromDone = !!document.getElementById('lvDone');
-    const m = r.matches[k];
-    const pick = await matchTeamsSheet({ title: `Corrigir a ${k + 1}ª partida`, teams: r.teams, a: m.a, b: m.b, ga: m.ga, gb: m.gb, hint: 'Escolha quem jogou de cada lado. O placar e os gols de cada atleta continuam iguais; vitórias, empates, derrotas e o campeão da noite são recalculados.' });
-    if (!pick) return;
-    const reopen = fromDone;
-    try { await store.saveRound(fixRoundMatch(r, k, pick.a, pick.b), null, 'partida corrigida'); toast(`${k + 1}ª partida corrigida`); }
-    catch (e) { toast(e.message, true); }
-    if (reopen) openLiveViewer();
+  'mt-edit-on': el => {
+    const r = roundById(el.dataset.r); if (!r?.matches) return;
+    state.matchEdit = { rid: r.id, draft: r.matches.map(m => ({ a: m.a, b: m.b })) }; redrawMatches();
+  },
+  'mt-edit-off': () => { const rid = state.matchEdit?.rid; state.matchEdit = null; redrawMatches(false, rid); },
+  'mt-edit-save': async el => {
+    const ed = state.matchEdit; const r = ed && roundById(ed.rid); if (!r) return;
+    let cur = r, n = 0;
+    ed.draft.forEach((d, k) => { const m = cur.matches[k]; if (d.a !== m.a || d.b !== m.b) { cur = { ...fixRoundMatch(cur, k, d.a, d.b), id: r.id }; n++; } });
+    if (!n) { state.matchEdit = null; redrawMatches(false, r.id); return; }
+    el.disabled = true;
+    try { await store.saveRound(cur, null, 'partidas corrigidas'); state.matchEdit = null; toast(n === 1 ? 'Partida corrigida' : `${n} partidas corrigidas`); }
+    catch (e) { toast(e.message, true); el.disabled = false; return; }
+    redrawMatches(true, r.id);
   },
   'live-swap': async () => {
     const l = L.loadLive(); const m = l?.match; if (!m) return;
@@ -3343,6 +3365,10 @@ document.addEventListener('input', ev => {
     const list = store.players.filter(p => albumMatch(p, f))
       .filter(p => !q || (p.name + ' ' + (p.nick || '')).toLowerCase().includes(q)).sort((a, b) => dn(a).localeCompare(dn(b)));
     $('#albumBody').innerHTML = albumBody(list.filter(p => p.active !== false), list.filter(p => p.active === false), p => figurinha(p, { totals: T[p.id] || C.zero() }));
+  }
+  if (k === 'mt-edit' && state.matchEdit) {
+    const d = state.matchEdit.draft[+ev.target.dataset.k]; d[ev.target.dataset.side] = +ev.target.value;
+    redrawMatches(); return;
   }
   if (k === 'draw-search') {
     state.drawSearch = ev.target.value;

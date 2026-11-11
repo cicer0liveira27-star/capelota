@@ -805,3 +805,8 @@ button.cx-card.in b { color: #3ccf8e; }
 .mf-score b { white-space: nowrap; }
 .mf-score span { flex: 1; min-width: 0; }
 .mf-score span:last-of-type { text-align: right; }
+.mt-sel { flex: 1; min-width: 0; height: 40px; padding: 0 10px; font-size: 14.5px; font-weight: 700; }
+.mt-row.chg { border-color: var(--amarelo); background: color-mix(in srgb, var(--amarelo) 8%, var(--vest)); }
+.mt-save { position: sticky; bottom: 12px; z-index: 3; display: flex; gap: 8px; margin-top: 12px; padding: 10px; border-radius: 16px; background: var(--vest-2, #17223a); border: 1px solid var(--risca); box-shadow: 0 10px 28px rgba(0,0,0,.45); }
+.mt-save .btn { flex: 1; }
+.mt-save .btn.primary { flex: 2; }
