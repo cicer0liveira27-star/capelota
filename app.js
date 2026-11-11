@@ -1303,8 +1303,8 @@ function openLiveViewer() {
   if (done && !liveOn()) {
     const r = store.rounds.find(x => x.date === done.date && !x.summary);
     openSheet(`<div id="lvDone"></div><div class="lv-viewer-top"><span class="live paused">RODADA ENCERRADA</span><span class="muted small">${C.fmtDate(done.date, { year: false })}</span></div>
-      <div class="lbl-sm">Classificação final</div>${liveTableHTML(r?.matches?.length && r.teams?.length ? { teams: r.teams, history: r.matches } : done)}
-      ${r?.matches?.length && r.teams?.length ? roundMatchesHTML(r) : done.history?.length ? `<div class="lbl-sm" style="margin-top:12px">Partidas da noite</div>${liveHistHTML(done)}` : ''}
+      <div class="lbl-sm">Classificação final</div>${(rw => liveTableHTML(rw?.matches?.length && rw.teams?.length ? { teams: rw.teams, history: rw.matches } : done))(roundWithMatches(r))}
+      ${roundWithMatches(r)?.matches?.length ? roundMatchesHTML(r) : done.history?.length ? `<div class="lbl-sm" style="margin-top:12px">Partidas da noite</div>${liveHistHTML(done)}` : ''}
       ${r ? roundBestHTML(r) : ''}
       ${r ? `<a class="btn primary block" style="margin-top:14px" href="#/rodada/${esc(r.id)}" data-act="sheet-close-go">Ver a rodada completa</a>` : ''}`);
     sheetRoot.querySelector('.sheet')?.classList.add('lv-sheet');
@@ -1946,7 +1946,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 58.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 59.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
@@ -2153,8 +2153,21 @@ async function roundBackupsSheet() {
 
 // ---------- partidas da noite ----------
 // Lista das partidas de uma rodada contada ao vivo, na ordem em que aconteceram
-function roundMatchesHTML(r) {
-  const ms = r.matches || [];
+// Rodada com as partidas da noite: se ela foi gravada sem a lista de partidas,
+// usa a noite ao vivo encerrada da mesma data (que fica no banco por 12 horas)
+function roundWithMatches(r) {
+  if (!r || r.summary) return r;
+  const okM = r.matches?.length, okT = r.teams?.length;
+  if (okM && okT) return r;
+  const l = store.live;
+  if (!l?.finishedAt || l.date !== r.date || !l.history?.length) return r;
+  return { ...r,
+    teams: okT ? r.teams : l.teams.map(t => ({ name: t.name, ids: [...t.ids], ...(t.cap ? { cap: t.cap } : {}) })),
+    matches: okM ? r.matches : l.history.map(h => ({ a: h.a, b: h.b, ga: h.ga, gb: h.gb, gkA: h.gkA || null, gkB: h.gkB || null, gols: (h.events || []).filter(e => e.type === 'g').map(e => ({ s: e.team === h.a ? 0 : 1, pid: e.pid || null, ast: e.ast || null })) })) };
+}
+function roundMatchesHTML(r0) {
+  const r = roundWithMatches(r0);
+  const ms = r?.matches || [];
   if (!ms.length || !r.teams?.length) return '';
   const ed = store.isMaster && state.matchEdit?.rid === r.id ? state.matchEdit : null;
   const nm = i => esc(r.teams[i]?.name || TEAM_NAMES[i]);
@@ -3063,12 +3076,12 @@ const actions = {
   },
   'bkp-list': () => roundBackupsSheet(),
   'mt-edit-on': el => {
-    const r = roundById(el.dataset.r); if (!r?.matches) return;
+    const r = roundWithMatches(roundById(el.dataset.r)); if (!r?.matches?.length) { toast('Essa rodada não tem as partidas guardadas.', true); return; }
     state.matchEdit = { rid: r.id, draft: r.matches.map(m => ({ a: m.a, b: m.b })) }; redrawMatches();
   },
   'mt-edit-off': () => { const rid = state.matchEdit?.rid; state.matchEdit = null; redrawMatches(false, rid); },
   'mt-edit-save': async el => {
-    const ed = state.matchEdit; const r = ed && roundById(ed.rid); if (!r) return;
+    const ed = state.matchEdit; const r = ed && roundWithMatches(roundById(ed.rid)); if (!r?.matches?.length) return;
     let cur = r, n = 0;
     ed.draft.forEach((d, k) => { const m = cur.matches[k]; if (d.a !== m.a || d.b !== m.b) { cur = { ...fixRoundMatch(cur, k, d.a, d.b), id: r.id }; n++; } });
     if (!n) { state.matchEdit = null; redrawMatches(false, r.id); return; }
