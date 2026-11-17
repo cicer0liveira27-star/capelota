@@ -115,13 +115,13 @@ const state = {
   rankGroup: 'L', rankStat: 'pts',
   albumFilter: 'all', search: '',
   awards: null,
-  draw: { sel: new Set(drawSaved.sel || []), n: drawSaved.n || 4, mode: drawSaved.mode || 'equilibrado', result: drawSaved.result || null, out: drawSaved.out || [], manual: !!drawSaved.manual, animate: false, names: drawSaved.names || [], caps: drawSaved.caps || {} },
+  draw: { sel: new Set(drawSaved.sel || []), n: drawSaved.n || 4, mode: drawSaved.mode || 'equilibrado', result: drawSaved.result || null, out: drawSaved.out || [], manual: !!drawSaved.manual, animate: false, names: drawSaved.names || [], caps: drawSaved.caps || {}, week: drawSaved.week || null },
   drawSearch: '',
   editor: null,
   installPrompt: null,
   firstDataRender: false
 };
-function saveDraw() { const d = state.draw; try { localStorage.setItem('capelota:draw', JSON.stringify({ sel: [...d.sel], n: d.n, mode: d.mode, names: d.names || [], result: d.result || null, out: d.out || [], manual: !!d.manual, caps: d.caps || {} })); } catch (e) {} }
+function saveDraw() { const d = state.draw; try { localStorage.setItem('capelota:draw', JSON.stringify({ sel: [...d.sel], n: d.n, mode: d.mode, names: d.names || [], result: d.result || null, out: d.out || [], manual: !!d.manual, caps: d.caps || {}, week: d.result ? (d.week || (d.week = officialRoundDate())) : null })); } catch (e) {} }
 // nome do time no sorteio (editável pela comissão)
 const PER_TEAM = 5; // 5 na linha por time; goleiros ficam soltos
 const dName = i => (state.draw.names?.[i] || '').trim() || TEAM_NAMES[i];
@@ -748,6 +748,21 @@ function vAtleta(id) {
 }
 
 // ================= SORTEIO =================
+// Sorteio publicado ainda vale? Sai de cena quando a rodada daquele dia já foi lançada
+// ou quando ele é de uma terça que já passou.
+function pubStale(pub = store.draw) {
+  if (!pub?.teams?.length) return true;
+  if (!pub.date) return false;
+  return pub.date < officialRoundDate() || store.rounds.some(r => !r.summary && r.date >= pub.date);
+}
+const pubDraw = () => pubStale() ? null : store.draw;
+// Times montados neste celular para uma pelada que já passou: limpa (os marcados continuam)
+function dropOldDraft() {
+  const d = state.draw; if (!d.result) return;
+  const old = d.week ? d.week < officialRoundDate() : pubStale();
+  if (!old) return;
+  d.result = null; d.out = []; d.caps = {}; d.names = []; d.manual = false; d.week = null; saveDraw();
+}
 function publishedTeams(compact) {
   const pub = store.draw;
   if (!pub || !pub.teams?.length) return '';
@@ -780,8 +795,8 @@ function partialHTML() {
 
 function vTimesPublic() {
   const pub0 = store.draw;
-  // a rodada daquele sorteio já foi lançada: os times saem da primeira tela
-  const done = pub0?.date && store.rounds.some(r => !r.summary && r.date >= pub0.date);
+  // a rodada daquele sorteio já foi lançada (ou a terça já passou): os times saem da primeira tela
+  const done = pub0?.teams?.length && pubStale(pub0);
   if (done) return heroHTML() + liveBannerHTML() + `<div class="page-head"><div><h1>Capelota</h1><p>A última rodada já foi lançada. Os times da próxima aparecem aqui quando a comissão publicar.</p></div></div>${partialHTML()}`;
   const pub = pub0;
   const when = pub?.date ? C.parseDate(pub.date) : null;
@@ -792,6 +807,7 @@ function vTimesPublic() {
 
 function vSorteio() {
   if (!store.isMaster) return vTimesPublic();
+  dropOldDraft();
   const d = state.draw;
   const active = store.players.filter(p => p.active !== false).sort((a, b) => (a.pos === 'G' ? -1 : 0) - (b.pos === 'G' ? -1 : 0) || dn(a).localeCompare(dn(b)));
   [...d.sel].forEach(id => { if (!active.some(p => p.id === id)) d.sel.delete(id); });
@@ -819,14 +835,14 @@ function vSorteio() {
         <button class="btn" data-act="draw-share">${I.whats}Mandar no grupo</button>
         <button class="btn" data-act="draw-go">${I.shuffle}Sortear de novo</button>
       </div>
-      <button class="btn primary block" style="margin-top:10px" data-act="draw-publish">${store.draw?.teams?.length ? 'Publicar para a galera (atualiza o que já foi publicado)' : 'Publicar para a galera'}</button>
+      <button class="btn primary block" style="margin-top:10px" data-act="draw-publish">${pubDraw() ? 'Publicar para a galera (atualiza o que já foi publicado)' : 'Publicar para a galera'}</button>
       <button class="btn primary block" style="margin-top:10px;background:var(--faixa);border-color:var(--faixa)" data-act="live-start">🔴 Começar rodada ao vivo com esses times</button>
       <button class="btn block" style="margin-top:10px" data-act="draw-to-round">Lançar rodada com esses times</button>
     </section>`;
   }
 
   const liveBanner = L.loadLive() ? `<a class="live-banner" href="#/partida"><i></i><span><b>Rodada ao vivo em andamento</b><br>Toque para voltar à partida</span></a>` : '';
-  const pubBlock = store.draw?.teams?.length ? `<details class="panel" style="margin-bottom:18px"><summary style="cursor:pointer;font-weight:700">Times publicados para a galera (${C.fmtDate(store.draw.date, { year: false })})</summary><div style="margin-top:12px">${publishedTeams()}</div>
+  const pubBlock = pubDraw() ? `<details class="panel" style="margin-bottom:18px"><summary style="cursor:pointer;font-weight:700">Times publicados para a galera (${C.fmtDate(store.draw.date, { year: false })})</summary><div style="margin-top:12px">${publishedTeams()}</div>
     <button class="btn block" style="margin-top:12px" data-act="draw-load-pub">✏ Editar os times publicados</button></details>` : '';
   return `<div class="page-head"><div><h1>Sorteio</h1><p>Marque quem chegou. Sorteie os times ou monte à mão (draft do WhatsApp). Depois publique para a galera ver.</p></div></div>
     ${liveBanner}${pubBlock}
@@ -1946,7 +1962,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 59.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 60.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
