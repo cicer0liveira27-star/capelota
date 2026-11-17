@@ -273,7 +273,11 @@ store.subscribe(() => {
   firstData();
   applyLiveFixes();
   // sorteio montado neste aparelho antes da sincronização: sobe para o banco uma vez
-  if (store.isMaster && (store.mode !== 'cloud' || store.financeLoaded) && !store.finance?.[DRAW_DOC] && (state.draw.result || state.draw.sel.size) && !state.drawPushed) { state.drawPushed = true; saveDraw(); }
+  // (times montados nesta semana numa versão antiga têm prioridade sobre o que estiver no banco)
+  if (store.isMaster && (store.mode !== 'cloud' || store.financeLoaded) && !state.drawPushed) {
+    const legacy = !state.draw.at && state.draw.result && (!state.draw.week || state.draw.week >= officialRoundDate());
+    if (legacy || (!store.finance?.[DRAW_DOC] && (state.draw.result || state.draw.sel.size))) { state.drawPushed = true; saveDraw(); }
+  }
   if (store.isMaster && applyCloudDraw() && route().name === 'sorteio') toast(`Sorteio atualizado${store.finance[DRAW_DOC]?.updatedBy ? ' por ' + store.finance[DRAW_DOC].updatedBy : ''}`);
   const r = route();
   // não redesenha o editor enquanto alguém está lançando a rodada
@@ -1990,7 +1994,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 61.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 62.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
