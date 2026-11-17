@@ -184,6 +184,7 @@ class Store {
     fsM.onSnapshot(fsM.doc(db, 'settings', 'live'), snap => {
       const d = snap.exists() ? snap.data() : null;
       try { this.live = d?.json ? { ...JSON.parse(d.json), _at: d.at, _by: d.by } : null; } catch (e) { this.live = null; }
+      this.liveAt = d?.at || 0;
       this._emit();
     }, err => console.error(err));
     // correções de partidas feitas por outro master; o celular que conta aplica e republica
@@ -510,7 +511,7 @@ class Store {
     if (!this.isMaster) return;
     const data = { json: l ? JSON.stringify(l) : null, at: Date.now(), by: this.user?.name || '' };
     if (this.mode === 'cloud') { const { db, fsM } = this.fb; return this._cloudWrite(fsM.setDoc(fsM.doc(db, 'settings', 'live'), data)); }
-    this.live = l ? { ...l, _at: data.at, _by: data.by } : null; this._emit(); return 'ok';
+    this.live = l ? { ...l, _at: data.at, _by: data.by } : null; this.liveAt = data.at; this._emit(); return 'ok';
   }
 
   // Pede uma correção de partida para a noite ao vivo que outro celular está contando

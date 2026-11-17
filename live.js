@@ -16,11 +16,35 @@ export const BLUE_MS = 2 * 60 * 1000;
 let publisher = null;
 export function setPublisher(fn) { publisher = fn; }
 
-export function loadLive() { try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; } }
+// Todos os masters controlam a mesma partida: o estado vale o mais recente entre este aparelho e o banco.
+// remote() devolve { live, at }: a rodada publicada (ou null) e quando ela foi gravada.
+let remote = null;
+export function setRemote(fn) { remote = fn; }
+function loadLocal() { try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; } }
+export function loadLive() {
+  const local = loadLocal();
+  if (local?.test) return local; // teste fica só neste aparelho
+  const r = remote?.(); if (!r) return local;
+  const cloud = r.live && !r.live.finishedAt && !r.live.test ? r.live : null;
+  const lr = local?.rev || 0;
+  if (cloud) {
+    const cr = cloud.rev || r.at || 0;
+    if (!local || cr > lr || cloud.id !== local.id && cr >= lr) {
+      const { _at, _by, ...c } = cloud;
+      try { localStorage.setItem(LS, JSON.stringify(c)); } catch (e) {}
+      return c;
+    }
+    return local;
+  }
+  // no banco não há rodada ao vivo: se ela foi encerrada/descartada depois da última mudança daqui, some daqui também
+  if (local && (r.at || 0) > lr) { try { localStorage.removeItem(LS); } catch (e) {} return null; }
+  return local;
+}
 // Rodada de teste (l.test): fica só neste celular. Não é publicada para a galera, não troca a rodada
 // ao vivo/encerrada que está no banco e, ao encerrar, não vai para as estatísticas.
 export function saveLive(l) {
-  const prev = loadLive();
+  const prev = loadLocal();
+  if (l) l.rev = Math.max(Date.now(), (prev?.rev || 0) + 1);
   try { if (l) localStorage.setItem(LS, JSON.stringify(l)); else localStorage.removeItem(LS); } catch (e) {}
   if (l ? l.test : prev?.test) return;
   try { publisher?.(l); } catch (e) {}

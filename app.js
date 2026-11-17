@@ -3,6 +3,8 @@ import * as C from './calc.js';
 import * as L from './live.js';
 import * as K from './caixa.js';
 L.setPublisher(l => { store.saveLive(l)?.catch?.(() => {}); });
+// qualquer master controla a partida: o estado ao vivo vem do banco quando ele é mais novo
+L.setRemote(() => store.isMaster && (store.mode !== 'cloud' || store.liveAt !== undefined) ? { live: store.live, at: store.liveAt || 0 } : null);
 
 // ================= utilidades =================
 const $ = (s, el = document) => el.querySelector(s);
@@ -1384,7 +1386,7 @@ function vPartida() {
   if (!store.isMaster) { location.hash = '#/sorteio'; return ''; }
   const l = L.loadLive();
   if (!l) {
-    if (liveOn()) return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Rodada ao vivo em outro celular</h3><p>${store.live._by ? esc(store.live._by) + ' está' : 'Alguém da comissão está'} contando a partida. Se precisar, você pode assumir a contagem neste celular.</p>
+    if (liveOn()) return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Rodada ao vivo</h3><p>${store.live._by ? esc(store.live._by) + ' está' : 'Alguém da comissão está'} contando a partida. Se precisar, você pode assumir a contagem neste celular.</p>
       <button class="btn" data-act="live-view">Acompanhar</button> <button class="btn primary" data-act="live-takeover">Assumir a contagem aqui</button></div>`;
     return `<a class="back" href="#/inicio">${I.back}Início</a><div class="empty"><h3>Nenhuma rodada ao vivo</h3><p>No Sorteio, sorteie ou monte os times e toque em "Começar rodada ao vivo".</p><a class="btn primary" href="#/sorteio">Ir para o sorteio</a></div>`;
   }
@@ -1596,7 +1598,8 @@ async function liveGk(side) {
 
 function liveEndFlow(reason) {
   const l = L.loadLive(); if (!l?.match) return;
-  const m = l.match; const [ga, gb] = L.score(m);
+  if (!sheetRoot.hidden && sheetRoot.querySelector('[data-end]')) return; // já está aberto
+  const m = l.match; const [ga, gb] = L.score(m); const nOpen = m.n;
   const tie = ga === gb;
   openSheet(`<h2>${esc(reason || 'Encerrar partida')}</h2>
     <p class="muted" style="margin-bottom:14px">${tName(l, m.a)} ${ga} × ${gb} ${tName(l, m.b)}. ${tie ? 'Empate: as duas equipes saem.' : `${tName(l, ga > gb ? m.a : m.b)} venceu e fica.`}</p>
@@ -1607,6 +1610,8 @@ function liveEndFlow(reason) {
       closeSheet();
       if (b.dataset.end === '__back') return;
       const l2 = L.loadLive(); if (!l2?.match) return;
+      // outro master já encerrou essa partida
+      if (l2.match.n !== nOpen) { toast('Essa partida já foi encerrada por outro master'); render(); return; }
       L.endMatch(l2);
       L.saveLive(l2); render(); window.scrollTo(0, 0);
     });
@@ -1994,7 +1999,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 62.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 63.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
