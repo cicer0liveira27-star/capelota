@@ -115,13 +115,38 @@ const state = {
   rankGroup: 'L', rankStat: 'pts',
   albumFilter: 'all', search: '',
   awards: null,
-  draw: { sel: new Set(drawSaved.sel || []), n: drawSaved.n || 4, mode: drawSaved.mode || 'equilibrado', result: drawSaved.result || null, out: drawSaved.out || [], manual: !!drawSaved.manual, animate: false, names: drawSaved.names || [], caps: drawSaved.caps || {}, week: drawSaved.week || null },
+  draw: { at: drawSaved.at || 0, sel: new Set(drawSaved.sel || []), n: drawSaved.n || 4, mode: drawSaved.mode || 'equilibrado', result: drawSaved.result || null, out: drawSaved.out || [], manual: !!drawSaved.manual, animate: false, names: drawSaved.names || [], caps: drawSaved.caps || {}, week: drawSaved.week || null },
   drawSearch: '',
   editor: null,
   installPrompt: null,
   firstDataRender: false
 };
-function saveDraw() { const d = state.draw; try { localStorage.setItem('capelota:draw', JSON.stringify({ sel: [...d.sel], n: d.n, mode: d.mode, names: d.names || [], result: d.result || null, out: d.out || [], manual: !!d.manual, caps: d.caps || {}, week: d.result ? (d.week || (d.week = officialRoundDate())) : null })); } catch (e) {} }
+// O rascunho do sorteio (quem vai jogar, times montados, nomes, capitães) fica no banco, na área só da comissão:
+// qualquer master, em qualquer aparelho, vê e continua o mesmo sorteio.
+const DRAW_DOC = '_sorteio';
+function drawPayload() { const d = state.draw; return { sel: [...d.sel], n: d.n, mode: d.mode, names: d.names || [], result: d.result || null, out: d.out || [], manual: !!d.manual, caps: d.caps || {}, week: d.result ? (d.week || (d.week = officialRoundDate())) : null }; }
+let drawSyncTimer = null;
+function saveDraw() {
+  const data = drawPayload();
+  state.draw.at = Date.now();
+  try { localStorage.setItem('capelota:draw', JSON.stringify({ ...data, at: state.draw.at })); } catch (e) {}
+  if (!store.isMaster) return;
+  clearTimeout(drawSyncTimer);
+  const at = state.draw.at;
+  drawSyncTimer = setTimeout(() => { store.saveFinance(DRAW_DOC, { json: JSON.stringify(data), at })?.catch?.(() => {}); }, 400);
+}
+// Recebe o sorteio salvo por outro master (ou outro aparelho) e aplica aqui
+function applyCloudDraw() {
+  const doc = store.finance?.[DRAW_DOC];
+  if (!doc?.json || !(doc.at > (state.draw.at || 0))) return false;
+  if (!sheetRoot.hidden && document.getElementById('mtBody')) return false; // não atropela quem está montando os times agora
+  let x; try { x = JSON.parse(doc.json); } catch (e) { return false; }
+  const d = state.draw;
+  d.sel = new Set(x.sel || []); d.n = x.n || 4; d.mode = x.mode || d.mode; d.names = x.names || []; d.result = x.result || null;
+  d.out = x.out || []; d.manual = !!x.manual; d.caps = x.caps || {}; d.week = x.week || null; d.at = doc.at; d.animate = false;
+  try { localStorage.setItem('capelota:draw', JSON.stringify({ ...x, at: doc.at })); } catch (e) {}
+  return true;
+}
 // nome do time no sorteio (editável pela comissão)
 const PER_TEAM = 5; // 5 na linha por time; goleiros ficam soltos
 const dName = i => (state.draw.names?.[i] || '').trim() || TEAM_NAMES[i];
@@ -247,6 +272,9 @@ function applyLiveFixes() {
 store.subscribe(() => {
   firstData();
   applyLiveFixes();
+  // sorteio montado neste aparelho antes da sincronização: sobe para o banco uma vez
+  if (store.isMaster && (store.mode !== 'cloud' || store.financeLoaded) && !store.finance?.[DRAW_DOC] && (state.draw.result || state.draw.sel.size) && !state.drawPushed) { state.drawPushed = true; saveDraw(); }
+  if (store.isMaster && applyCloudDraw() && route().name === 'sorteio') toast(`Sorteio atualizado${store.finance[DRAW_DOC]?.updatedBy ? ' por ' + store.finance[DRAW_DOC].updatedBy : ''}`);
   const r = route();
   // não redesenha o editor enquanto alguém está lançando a rodada
   if (r.name === 'lancar' && state.editor) {
@@ -1962,7 +1990,7 @@ function vAjustes() {
         : isIOS ? `<p>No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início".</p>`
         : `<p>No Chrome, abra o menu ⋮ e toque em "Instalar app" ou "Adicionar à tela inicial".</p>`}
     </div>`}
-    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 60.</p>`;
+    <p class="hint" style="text-align:center;margin-top:22px">Capelota, terças às 19h. Versão 61.</p>`;
 }
 
 // ================= EDITOR DE RODADA =================
